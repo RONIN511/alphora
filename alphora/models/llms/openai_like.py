@@ -12,7 +12,8 @@ from alphora.models.message import Message
 from alphora.models.llms.base import BaseLLM
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
 from alphora.server.stream_responser import DataStreamer
-# from chatbi.agent.postprocess.base import BasePostProcessor
+
+from alphora.models.llms.balancer import _LLMLoadBalancer
 
 from alphora.utils.logger import get_logger
 logger = get_logger("test", level="DEBUG")
@@ -44,10 +45,19 @@ class OpenAILike(BaseLLM):
         self.api_key = api_key or os.getenv("LLM_API_KEY")
         self.base_url = base_url or os.getenv("LLM_BASE_URL")
         self.header = header
+
+        self.completion_params = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "top_p": top_p,
+            "model": model_name,
+        }
+
         self.system_prompt = system_prompt
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.top_p = top_p
+
         self.agent_id: str = "default"
 
         if not self.api_key:
@@ -57,19 +67,10 @@ class OpenAILike(BaseLLM):
         self._sync_client = OpenAI(api_key=self.api_key, base_url=self.base_url, default_headers=self.header)
         self._async_client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, default_headers=self.header)
 
-        # Post-processors
-        # self.post_processors: Dict[str, List[BasePostProcessor]] = {}
-
-        # Logger binding
-        if logger:
-            self.logger = logger
-            if hasattr(logger, 'model_name'):
-                logger.model_name = self.model_name
-
-    # def add_postprocessor(self, agent_id: str, postprocessor: BasePostProcessor) -> None:
-    #     if agent_id not in self.post_processors:
-    #         self.post_processors[agent_id] = []
-    #     self.post_processors[agent_id].append(postprocessor)
+        self._balancer = _LLMLoadBalancer()
+        self._balancer.add_client(sync_client=self._sync_client,
+                                  async_client=self._async_client,
+                                  completion_params=self.completion_params)
 
     def _prepare_messages(self, message: Union[str, Message], system_prompt: Optional[str] = None) -> List[Dict[str, Any]]:
         if isinstance(message, str):
@@ -84,10 +85,6 @@ class OpenAILike(BaseLLM):
         messages.append(message.to_openai_format(role="user"))
         return messages
 
-    # ======================
-    # Sync Methods
-    # ======================
-
     def get_non_stream_response(self, message: Union[str, Message]) -> str:
         """
         用同步的客户端，获取大模型的输出
@@ -98,13 +95,13 @@ class OpenAILike(BaseLLM):
 
         start = time.time()
 
-        completion = self._sync_client.chat.completions.create(
-            model=self.model_name,
+        client, params = self._balancer.get_next_sync_backend()
+
+        completion = client.chat.completions.create(
+            **params,
             messages=messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            top_p=self.top_p,
             timeout=9999,
+            stream=False,
             extra_body=self._get_extra_body(),
         )
 
@@ -134,12 +131,11 @@ class OpenAILike(BaseLLM):
 
         messages = self._prepare_messages(message, system_prompt)
 
-        stream = self._sync_client.chat.completions.create(
-            model=self.model_name,
+        sync_client, params = self._balancer.get_next_sync_backend()
+
+        stream = sync_client.chat.completions.create(
+            **params,
             messages=messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            top_p=self.top_p,
             stream=True,
             extra_body=self._get_extra_body(enable_thinking),
         )
@@ -166,28 +162,17 @@ class OpenAILike(BaseLLM):
 
         gen = SyncStreamGenerator(stream, content_type)
 
-        if self.logger:
-            try:
-                gen.llm_logger = self.logger
-                gen.instruction = message.text if isinstance(message, Message) else message
-            except AttributeError:
-                pass
-
-        # Apply post-processors
-        processors = self.post_processors.get(self.agent_id, [])
-        for proc in processors:
-            gen = proc(gen)
         return gen
 
     async def aget_non_stream_response(self, message: Union[str, Message]) -> str:
         messages = self._prepare_messages(message)
         start = time.time()
-        completion = await self._async_client.chat.completions.create(
-            model=self.model_name,
+
+        async_client, params = self._balancer.get_next_async_backend()
+
+        completion = await async_client.chat.completions.create(
+            **params,
             messages=messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            top_p=self.top_p,
             timeout=9999,
             extra_body=self._get_extra_body(),
         )
@@ -214,12 +199,11 @@ class OpenAILike(BaseLLM):
 
         messages = self._prepare_messages(message, system_prompt)
 
-        stream = await self._async_client.chat.completions.create(
-            model=self.model_name,
+        async_client, params = self._balancer.get_next_async_backend()
+
+        stream = await async_client.chat.completions.create(
+            **params,
             messages=messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            top_p=self.top_p,
             stream=True,
             extra_body=self._get_extra_body(enable_thinking),
         )
@@ -247,17 +231,6 @@ class OpenAILike(BaseLLM):
 
         gen = AsyncStreamGenerator(stream, content_type)
 
-        if self.logger:
-            try:
-                gen.llm_logger = self.logger
-                gen.instruction = message.text if isinstance(message, Message) else message
-            except AttributeError:
-                pass
-
-        # Note: Post-processors must support async if used with async stream
-        processors = self.post_processors.get(self.agent_id, [])
-        for proc in processors:
-            gen = proc(gen)  # assumes proc supports async generators if needed
         return gen
 
     def _get_extra_body(self, enable_thinking: bool = False) -> Optional[Dict[str, Any]]:
@@ -268,9 +241,6 @@ class OpenAILike(BaseLLM):
             }
         return None
 
-    # ======================
-    # Utility Methods
-    # ======================
     def set_temperature(self, temp: float):
         if not (0.0 <= temp <= 1.0):
             raise APIParameterError("temperature must be between 0.0 and 1.0")
@@ -320,4 +290,15 @@ class OpenAILike(BaseLLM):
         self.__dict__.update(state)
         self._sync_client = OpenAI(api_key=self.api_key, base_url=self.base_url, default_headers=self.header)
         self._async_client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, default_headers=self.header)
+
+    def __add__(self, other: "OpenAILike") -> "OpenAILike":
+        if not isinstance(other, OpenAILike):
+            return NotImplemented
+
+        self._balancer.add_client(async_client=other._async_client,
+                                  sync_client=other._sync_client,
+                                  completion_params=other.completion_params)
+
+        return self
+
 

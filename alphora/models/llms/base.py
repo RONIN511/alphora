@@ -12,6 +12,7 @@ class BaseLLM(ABC):
     ):
 
         self.callback: Optional[DataStreamer] = callback
+        self.post_processors = {}
 
     @abstractmethod
     def get_non_stream_response(self, message: Union[str, Message]) -> str:
@@ -56,16 +57,3 @@ class BaseLLM(ABC):
 
     async def astream(self, *args, **kwargs) -> BaseGenerator:
         return await self.aget_streaming_response(*args, **kwargs)
-
-    def __add__(self, other):
-        from alphora.models.llms.balancer import LLMBalancer
-        if isinstance(other, BaseLLM):
-            return LLMBalancer([self, other])
-        elif isinstance(other, LLMBalancer):
-            other.add_llm(self)
-            return other
-        else:
-            raise TypeError(f"Unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
-
-    def __radd__(self, other):
-        return self.__add__(other)
