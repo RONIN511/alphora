@@ -16,11 +16,9 @@ class Qwen(OpenAILike):
             model_name: str = "qwen-max",
             api_key: Optional[str] = None,
             header: Optional[Mapping[str, str]] = None,
-            system_prompt: Optional[str] = None,
             temperature: float = 0.0,
             max_tokens: int = 1024,
             top_p: float = 1.0,
-            callback: Optional[DataStreamer] = None,
     ):
         """
         初始化 Qwen 模型客户端。
@@ -29,22 +27,19 @@ class Qwen(OpenAILike):
             model_name: 模型名称，如 'qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen3-32b' 等。
             api_key: DashScope API 密钥。若未提供，将尝试从环境变量 LLM_API_KEY 读取。
             header: 额外请求头。
-            system_prompt: 默认系统提示。
             temperature: 采样温度（0.0 ~ 1.0）。
             max_tokens: 最大生成 token 数。
             top_p: 核采样参数。
-            callback: 流式响应回调处理器。
+
         """
         super().__init__(
             model_name=model_name,
             api_key=api_key,
             base_url=self.DASHSCOPE_BASE_URL,
             header=header,
-            system_prompt=system_prompt,
             temperature=temperature,
             max_tokens=max_tokens,
-            top_p=top_p,
-            callback=callback,
+            top_p=top_p
         )
 
     def _get_extra_body(self, enable_thinking: bool = False) -> Optional[dict]:

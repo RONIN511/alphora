@@ -34,26 +34,31 @@ class OpenAILike(BaseLLM):
             api_key: Optional[str] = None,
             base_url: Optional[str] = None,
             header: Optional[Mapping[str, str]] = None,
-            system_prompt: Optional[str] = None,
             temperature: float = 0.0,
             max_tokens: int = 1024,
-            top_p: float = 1.0,
-            callback: Optional[DataStreamer] = None,
+            top_p: float = 1.0
     ):
-        super().__init__(callback=callback)
+
+        super().__init__(model_name=model_name,
+                         api_key=api_key,
+                         base_url=base_url,
+                         header=header,
+                         temperature=temperature,
+                         max_tokens=max_tokens,
+                         top_p=top_p)
+
         self.model_name = model_name or os.getenv("DEFAULT_LLM")
         self.api_key = api_key or os.getenv("LLM_API_KEY")
         self.base_url = base_url or os.getenv("LLM_BASE_URL")
         self.header = header
 
         self.completion_params = {
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "top_p": top_p,
-            "model": model_name,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "model": self.model_name,
         }
 
-        self.system_prompt = system_prompt
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.top_p = top_p
@@ -61,7 +66,7 @@ class OpenAILike(BaseLLM):
         self.agent_id: str = "default"
 
         if not self.api_key:
-            raise ValueError("API key is required (via arg or LLM_API_KEY env var).")
+            self.api_key = "empty"
 
         # Clients
         self._sync_client = OpenAI(api_key=self.api_key, base_url=self.base_url, default_headers=self.header)
@@ -72,7 +77,15 @@ class OpenAILike(BaseLLM):
                                   async_client=self._async_client,
                                   completion_params=self.completion_params)
 
-    def _prepare_messages(self, message: Union[str, Message], system_prompt: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _prepare_messages(self,
+                          message: Union[str, Message],
+                          system_prompt: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        快速将字符串输出组装成传入oai模型的消息体
+        :param message:
+        :param system_prompt:
+        :return:
+        """
         if isinstance(message, str):
             message = Message().add_text(message)
         elif not isinstance(message, Message):
@@ -85,13 +98,19 @@ class OpenAILike(BaseLLM):
         messages.append(message.to_openai_format(role="user"))
         return messages
 
-    def get_non_stream_response(self, message: Union[str, Message]) -> str:
+    def get_non_stream_response(self,
+                                message: Union[str, Message],
+                                enable_thinking: bool = False,
+                                system_prompt: Optional[str] = None,) -> str:
         """
-        用同步的客户端，获取大模型的输出
+        同步-非流式
         :param message:
+        :param enable_thinking:
+        :param system_prompt:
         :return:
         """
-        messages = self._prepare_messages(message)
+
+        messages = self._prepare_messages(message=message, system_prompt=system_prompt)
 
         start = time.time()
 
@@ -102,7 +121,7 @@ class OpenAILike(BaseLLM):
             messages=messages,
             timeout=9999,
             stream=False,
-            extra_body=self._get_extra_body(),
+            extra_body=self._get_extra_body(enable_thinking=enable_thinking),
         )
 
         elapsed = round(time.time() - start, 2)
@@ -129,7 +148,16 @@ class OpenAILike(BaseLLM):
             system_prompt: Optional[str] = None,
     ) -> BaseGenerator:
 
-        messages = self._prepare_messages(message, system_prompt)
+        """
+        同步-流式输出
+        :param message:
+        :param content_type:
+        :param enable_thinking:
+        :param system_prompt:
+        :return:
+        """
+
+        messages = self._prepare_messages(message=message, system_prompt=system_prompt)
 
         sync_client, params = self._balancer.get_next_sync_backend()
 
@@ -137,7 +165,7 @@ class OpenAILike(BaseLLM):
             **params,
             messages=messages,
             stream=True,
-            extra_body=self._get_extra_body(enable_thinking),
+            extra_body=self._get_extra_body(enable_thinking=enable_thinking),
         )
 
         class SyncStreamGenerator(BaseGenerator[GeneratorOutput]):
@@ -164,8 +192,18 @@ class OpenAILike(BaseLLM):
 
         return gen
 
-    async def aget_non_stream_response(self, message: Union[str, Message]) -> str:
-        messages = self._prepare_messages(message)
+    async def aget_non_stream_response(self,
+                                       message: Union[str, Message],
+                                       enable_thinking: bool = False,
+                                       system_prompt: Optional[str] = None,) -> str:
+        """
+        异步-非流式输出
+        :param message:
+        :param enable_thinking:
+        :param system_prompt:
+        :return:
+        """
+        messages = self._prepare_messages(message=message, system_prompt=system_prompt)
         start = time.time()
 
         async_client, params = self._balancer.get_next_async_backend()
@@ -197,8 +235,18 @@ class OpenAILike(BaseLLM):
             system_prompt: Optional[str] = None,
     ) -> BaseGenerator:
 
-        messages = self._prepare_messages(message, system_prompt)
+        """
+        异步 - 流式输出 (核心方法)
+        :param message:
+        :param content_type: 流式输出的content-type
+        :param enable_thinking:
+        :param system_prompt:
+        :return:
+        """
 
+        messages = self._prepare_messages(message=message, system_prompt=system_prompt)
+
+        # 大模型负载均衡
         async_client, params = self._balancer.get_next_async_backend()
 
         stream = await async_client.chat.completions.create(
@@ -233,7 +281,7 @@ class OpenAILike(BaseLLM):
 
         return gen
 
-    def _get_extra_body(self, **kwargs) -> dict:
+    def _get_extra_body(self, *args, **kwargs) -> dict:
         """由子类重写"""
         return {}
 

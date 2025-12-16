@@ -25,8 +25,7 @@ class _LLMLoadBalancer:
             completion_params: Dict[str, Any]
     ):
         """
-        同时注册一对同步/异步客户端，共享相同的 completion_params。
-        保证两者在负载均衡中处于相同位置（策略对齐）。
+        新增client，同时注册一对同步/异步客户端，共享相同的 completion_params
         """
         if not isinstance(sync_client, OpenAI):
             raise TypeError("sync_client must be an instance of OpenAI")
@@ -35,13 +34,13 @@ class _LLMLoadBalancer:
         if not isinstance(completion_params, dict):
             raise TypeError("completion_params must be a dict")
 
-        # 深拷贝 params 避免外部修改影响
+        # 深拷贝 params
         params_copy = completion_params.copy()
 
         self._sync_backends.append((sync_client, params_copy))
         self._async_backends.append((async_client, params_copy))
 
-        # 重建 cycle（仅当使用 round_robin）
+        # 重建 cycle
         if self.strategy == "round_robin":
             self._sync_cycle = cycle(range(len(self._sync_backends)))
             self._async_cycle = cycle(range(len(self._async_backends)))
@@ -66,4 +65,5 @@ class _LLMLoadBalancer:
 
     def size(self) -> int:
         """返回后端对的数量"""
-        return len(self._sync_backends)  # == len(self._async_backends)
+        return len(self._sync_backends)
+

@@ -19,6 +19,9 @@ class BaseGenerator(ABC, Generic[T]):
         self.instruction: Optional[str] = None
         self.finish_reason: Optional[str] = None
 
+    def get_finish_reason(self) -> str:
+        return self.finish_reason
+
     def generate(self) -> Iterator[T]:
         raise NotImplementedError
 

@@ -4,6 +4,7 @@
 路径: 绝对路径，相对路径
 
 """
+import json
 from datetime import datetime
 import logging
 import os
@@ -15,9 +16,13 @@ from typing import Optional, List, Dict, Callable, Any
 from jinja2 import Environment, Template, BaseLoader, meta
 
 from alphora.models.message import Message
+from alphora.prompter.postprocess.base import BasePostProcessor
 from alphora.server.stream_responser import DataStreamer
 
-from alphora.models.llms import LLM, BaseGenerator, GeneratorOutput
+from json_repair import repair_json
+
+from alphora.models.llms.base import BaseLLM
+from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
 
 from typing import TYPE_CHECKING
 
@@ -25,11 +30,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-class ResponseWithReasoning(str):
-    def __new__(cls, answer: str, reasoning: str = None):
-        instance = super().__new__(cls, answer)
-        instance.reasoning_content = reasoning
+class PrompterOutput(str):
+    def __new__(cls, content: str, reasoning: str = "", finish_reason: str = ""):
+        instance = super().__new__(cls, content)
+        instance._reasoning = reasoning
+        instance._finish_reason = finish_reason
         return instance
+
+    @property
+    def reasoning(self):
+        return self._reasoning
+
+    @property
+    def finish_reason(self):
+        return self._finish_reason
+
+    def __repr__(self):
+        return f'PrompterOutput({super().__repr__()}, reason={self._reasoning!r}, finish_reason={self._finish_reason!r})'
 
 
 class BasePrompt:
@@ -38,7 +55,7 @@ class BasePrompt:
 
     def __init__(self,
                  verbose: bool = False,
-                 prompt_id: str = None,
+                 callback: Optional[DataStreamer] = None,
                  **kwargs):
 
         """
@@ -48,15 +65,11 @@ class BasePrompt:
             **kwargs: 占位符
         """
 
-        self.prompt_id = prompt_id or f"pmt{str(uuid.uuid4())[:8]}"  # 用于跟踪BasePrompt
-
         self.is_stream: bool = False
-        self.llm: LLM | None = None
 
+        self.llm: BaseLLM | None = None
+        self.callback: Optional[DataStreamer] = callback
         self.verbose: bool = verbose
-
-        if self.llm:
-            self.llm.verbose = self.verbose
 
         self.llm_data_streamer = None  # self.llm 自带的 callback
 
@@ -186,8 +199,7 @@ class BasePrompt:
             rendered = re.sub(r'\n{3,}', '\n\n', rendered.strip())
             return rendered
         except Exception as e:
-            printf(title='Render Error', color='red',
-                   message=f"渲染错误: {str(e)}\n上下文变量: {render_context}")
+            logger.error(msg=f"渲染错误: {str(e)}\n 上下文变量: {render_context}")
             return ""
 
     def load_from_string(self, prompt: str) -> None:
@@ -219,12 +231,6 @@ class BasePrompt:
         Returns: BasePrompt
         """
         self.llm = model
-
-        if self.llm:
-            self.llm.verbose = self.verbose
-
-        self.llm_data_streamer: Optional[DataStreamer] = self.llm.callback
-
         return self
 
     def _character_level_streaming(self, output_content: GeneratorOutput) -> str:
@@ -233,16 +239,14 @@ class BasePrompt:
         chunk: JSON字符串！！
         Returns:
         """
-        data_streamer: Optional[DataStreamer] = self.llm.callback
-
-        if data_streamer:
+        if self.callback:
             try:
                 content = output_content.content
                 content_type = output_content.content_type
 
                 if content:
                     ctype = 'char' if content_type == 'text' else content_type
-                    data_streamer.send_data(content_type=ctype, content=content)
+                    self.callback.send_data(content_type=ctype, content=content)
                     return content
 
             except Exception as e:
@@ -259,8 +263,7 @@ class BasePrompt:
              postprocessor: 'BasePostProcessor' | Callable[[BaseGenerator], BaseGenerator] |
                             List['BasePostProcessor'] | List[Callable[[BaseGenerator], BaseGenerator]] | None = None,
              enable_thinking: bool = False,
-             system_prompt: str = None,
-             return_finish_reason: bool = False
+             force_json: bool = False
              ) -> BaseGenerator | str | Any:
         """
         调用大模型对Prompt进行推理
@@ -272,15 +275,19 @@ class BasePrompt:
             return_generator: 是否返回生成器，默认返回字符串，并做流式输出，如果此项为True，则仅返回生成器
             postprocessor: 后处理器
             enable_thinking: 是否开启思考
-            system_prompt: 系统提示词
-            return_finish_reason: 是否返回终止原因，对流式输出
+            force_json: 强制Json
         Returns:
         """
 
         if not self.llm:
             raise ValueError("LLM not initialized")
 
-        llm: LLM = self.llm
+        system_prompt = None
+
+        if force_json:
+            system_prompt = "必须输出Json格式"
+
+        llm: BaseLLM = self.llm
 
         instruction = self.render()
 
@@ -294,15 +301,10 @@ class BasePrompt:
 
                 msg.add_text(content=instruction)
 
-                # 调试的时候可能需要用到输出渲染后的Prompt，平时可以注释掉
-                if llm.verbose:
-                    logger.info(msg=instruction)
-
                 generator_with_content_type: BaseGenerator = llm.get_streaming_response(message=msg,
                                                                                         content_type=content_type,
                                                                                         enable_thinking=enable_thinking,
-                                                                                        system_prompt=system_prompt,
-                                                                                        return_finish_reason=return_finish_reason)
+                                                                                        system_prompt=system_prompt)
 
                 # 后处理咯
                 if postprocessor:
@@ -316,8 +318,6 @@ class BasePrompt:
 
                     else:
                         generator_with_content_type = postprocessor(generator_with_content_type)
-
-                data_streamer: Optional[DataStreamer] = self.llm.callback
 
                 # 在流式模式下，有流式输出器的情况下，如果要求输出生成器，则直接返回
                 if return_generator:
@@ -336,26 +336,26 @@ class BasePrompt:
                     content_type = ck.content_type
 
                     if content_type == 'think' and enable_thinking:
-                        data_streamer.send_data(content_type=content_type, content=content)
+                        self.callback.send_data(content_type=content_type, content=content)
                         reasoning_content += content
                         continue
 
                     if content:
-                        data_streamer.send_data(content_type=content_type, content=content)
+                        self.callback.send_data(content_type=content_type, content=content)
                         output_str += content
+
+                if force_json:
+                    try:
+                        output_str = repair_json(json_str=output_str)
+                    except Exception as e:
+                        raise Exception(e)
 
                 finish_reason = generator_with_content_type.finish_reason
 
-                if return_finish_reason:
-                    if enable_thinking:
-                        return ResponseWithReasoning(answer=output_str, reasoning=reasoning_content), finish_reason
-                    else:
-                        return ResponseWithReasoning(answer=output_str), finish_reason
-
                 if enable_thinking:
-                    return ResponseWithReasoning(answer=output_str, reasoning=reasoning_content)
+                    return PrompterOutput(content=output_str, reasoning=reasoning_content, finish_reason=finish_reason)
                 else:
-                    return ResponseWithReasoning(answer=output_str)
+                    return PrompterOutput(content=output_str, reasoning="", finish_reason=finish_reason)
 
             except Exception as e:
                 raise f"流式响应时发生错误: {e}"
@@ -370,13 +370,135 @@ class BasePrompt:
 
             msg.add_text(content=instruction)
 
-            if llm.verbose:
-                logger.info(msg=f'调试-渲染Prompt:\n{instruction}')
-
             try:
                 resp = llm.invoke(message=msg)
 
-                return resp
+                return PrompterOutput(content=resp, reasoning="", finish_reason="")
+
+            except Exception as e:
+                raise e
+
+    async def acall(self,
+                    query: str = None,
+                    is_stream: bool = False,
+                    multimodal_message: Message = None,  # 多模态数据
+                    return_generator: bool = False,
+                    content_type: str = 'text',
+                    postprocessor: 'BasePostProcessor' | Callable[[BaseGenerator], BaseGenerator] |
+                                   List['BasePostProcessor'] | List[
+                                       Callable[[BaseGenerator], BaseGenerator]] | None = None,
+                    enable_thinking: bool = False,
+                    force_json: bool = False
+                    ) -> BaseGenerator | str | Any:
+        """
+        调用大模型对Prompt进行推理
+        Args:
+            content_type:
+            query: 用户问题（Prompt中的query占位符）
+            is_stream: 是否输出流式
+            multimodal_message: # 包含图片、视频、语音等多模态数据
+            return_generator: 是否返回生成器，默认返回字符串，并做流式输出，如果此项为True，则仅返回生成器
+            postprocessor: 后处理器
+            enable_thinking: 是否开启思考
+            force_json: 强制Json
+        Returns:
+        """
+
+        if not self.llm:
+            raise ValueError("LLM not initialized")
+
+        system_prompt = None
+
+        if force_json:
+            system_prompt = "必须输出Json格式"
+
+        llm: BaseLLM = self.llm
+
+        instruction = self.render()
+
+        msg = multimodal_message or Message()
+
+        if is_stream:
+            try:
+                if query:
+                    instruction = Template(instruction)
+                    instruction = instruction.render(query=query)
+
+                msg.add_text(content=instruction)
+
+                generator_with_content_type: BaseGenerator = await llm.aget_streaming_response(message=msg,
+                                                                                               content_type=content_type,
+                                                                                               enable_thinking=enable_thinking,
+                                                                                               system_prompt=system_prompt)
+
+                # 后处理咯
+                if postprocessor:
+                    if isinstance(postprocessor, List):
+                        processed_generator = generator_with_content_type
+
+                        for processor in postprocessor:
+                            processed_generator = processor(processed_generator)
+
+                        generator_with_content_type = processed_generator
+
+                    else:
+                        generator_with_content_type = postprocessor(generator_with_content_type)
+
+                # 在流式模式下，有流式输出器的情况下，如果要求输出生成器，则直接返回
+                if return_generator:
+                    return generator_with_content_type
+
+                # 如果llm具备callback，那么返回一个str
+                output_str = ''
+                reasoning_content = ''
+
+                # for ck in generator_with_content_type:
+                #     output_str += self._character_level_streaming(output_content=ck)
+
+                for ck in generator_with_content_type:
+
+                    content = ck.content
+                    content_type = ck.content_type
+
+                    if content_type == 'think' and enable_thinking:
+                        await self.callback.send_data(content_type=content_type, content=content)
+                        reasoning_content += content
+                        continue
+
+                    if content:
+                        await self.callback.send_data(content_type=content_type, content=content)
+                        output_str += content
+
+                if force_json:
+                    try:
+                        output_str = repair_json(json_str=output_str)
+                    except Exception as e:
+                        raise Exception(e)
+
+                finish_reason = generator_with_content_type.finish_reason
+
+                if enable_thinking:
+                    return PrompterOutput(content=output_str, reasoning=reasoning_content, finish_reason=finish_reason)
+                else:
+                    return PrompterOutput(content=output_str, reasoning="", finish_reason=finish_reason)
+
+            except Exception as e:
+                raise f"流式响应时发生错误: {e}"
+
+        else:
+            """
+            NonStream
+            """
+            if query:
+                instruction = Template(instruction)
+                instruction = instruction.render(query=query)
+
+            msg.add_text(content=instruction)
+
+            try:
+                resp = await llm.ainvoke(message=msg)
+
+                return PrompterOutput(content=resp, reasoning="", finish_reason="")
 
             except Exception as e:
                 raise e
@@ -406,17 +528,6 @@ class BasePrompt:
         self.context.update(valid_kwargs)
 
         return self
-
-    @staticmethod
-    def random_split(text):
-        """用于随机拆分防火墙输出的标准答案，避免逐个字符输出"""
-        import random
-        result = []
-        while text:
-            split_point = random.randint(1, max(1, len(text)))
-            result.append(text[:split_point])
-            text = text[split_point:]
-        return result
 
     def __str__(self) -> str:
         try:
