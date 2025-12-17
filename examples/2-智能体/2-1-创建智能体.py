@@ -19,8 +19,8 @@ class Agent(BaseAgent):
         prompt.update_placeholder(target_lang='en')
         result = await prompt.acall(query='你好,中国移动是中国创办的一家中央企业', is_stream=True, force_json=True)
 
-        self.stream.stream_message(content='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        pass
+        await self.stream.astream_message(content='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+        await self.stream.astop(stop_reason='end')
 
 
 # ====================
@@ -37,9 +37,9 @@ async def stream():
     # 启动智能体
     asyncio.create_task(agent.execute())
 
-    return streamer.start_non_streaming_openai()
+    return await streamer.start_non_streaming_openai()
 
-    return streamer.start_streaming_openai()
+    # return streamer.start_streaming_openai()
 
 import uvicorn
 

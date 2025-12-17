@@ -99,6 +99,15 @@ class Stream:
         generator = StringGenerator(content, content_type, interval)
         self.stream_to_response(generator)
 
+    async def astop(self, stop_reason: str = 'end') -> None:
+        """
+        终结流式输出
+        """
+        if self.callback:
+            await self.callback.stop(stop_reason=stop_reason)
+        else:
+            print(f"\n[Stream stopped: {stop_reason}]")
+
     def stop(self, stop_reason: str = 'end') -> None:
         """
         终结流式输出

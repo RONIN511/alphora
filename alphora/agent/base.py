@@ -1,31 +1,15 @@
 from fastapi import Request
 import asyncio
 from alphora.models.llms.openai_like import OpenAILike
-from typing import Optional, List, Any, overload, Union, Dict, Iterator
+from typing import Optional, List, Any, overload, Union, Dict, Iterator, TypeVar, Type
 from alphora.server.stream_responser import DataStreamer
-
-from uuid import uuid4
-import functools
-import os
-import uuid
 import logging
-from dataclasses import dataclass
-import time
-import warnings
-
-from alphora.models.llms.stream_helper import GeneratorOutput, BaseGenerator
-from alphora.models.embedder.embedder_model import EmbeddingModel
-
 from alphora.prompter import BasePrompt
 
 from alphora.memory.base import BaseMemory
 from alphora.memory.memories.short_term_memory import ShortTermMemory
-import random
-from alphora.prompter.postprocess.base import BasePostProcessor
-
 from alphora.agent.stream import Stream
 
-from typing import Optional, Type, TypeVar, Dict, Any
 
 T = TypeVar('T', bound='BaseAgent')
 
@@ -128,26 +112,6 @@ class BaseAgent(object):
         raise NotImplementedError(
             f"'{self.__class__.__name__}.run' must be implemented "
         )
-
-    def to_api(self):
-        """
-        返回一个可直接用于 @app.post 的视图函数。
-        支持 POST JSON 输入，自动注入 streamer 和原始配置。
-        """
-        agent_class = self.__class__
-        init_kwargs = self._init_kwargs
-
-        async def api_view(request: Request):
-            input_data = await request.json()
-
-            agent = agent_class(**init_kwargs)
-            agent.callback = streamer
-
-            asyncio.create_task(agent.run(input_data))
-
-            return streamer.start_streaming_openai()
-
-        return api_view
 
     def __or__(self, other):
         from chatbi.agent.foundation.utils.parallel import ParallelFoundationLayer
