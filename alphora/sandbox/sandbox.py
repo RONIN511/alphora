@@ -650,40 +650,6 @@ class Sandbox(BaseAgent):
                 target_path.unlink()
             raise RuntimeError(f"添加文件失败: {e}") from e
 
-    # def upload_file(self,
-    #                 base64_content: str,
-    #                 target_file_name: str) -> str:
-    #     """
-    #     将Base64编码的文件内容载入到沙箱环境中
-    #     """
-    #
-    #     target_path = Path(self.sandbox_path)
-    #
-    #     if target_file_name:
-    #         target_path /= target_file_name
-    #     else:
-    #         raise ValueError("target_file_name不能为空")
-    #
-    #     if not str(target_path).startswith(self.sandbox_path):
-    #         raise ValueError("非法的目标路径，禁止路径穿越")
-    #
-    #     try:
-    #         base64_to_file(base64_content, target_path)
-    #         logging.info(f"Base64文件已载入: {target_path}")
-    #
-    #         file_info = FileReaderFactory(**self.init_params).read_file(
-    #             file_path=target_path
-    #         )
-    #
-    #         if file_info["description"]:
-    #             FileReader.save_description(target_path, file_info["description"])
-    #             return file_info["description"]
-    #
-    #         return ""
-    #
-    #     except Exception as e:
-    #         raise e
-
     def is_empty(self) -> bool:
         """
         判断沙箱目录是否为空（不包含有效文件，忽略隐藏文件和描述文件）
