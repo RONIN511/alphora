@@ -16,7 +16,8 @@ class BaseMemory:
         self.current_turn: Dict[str, int] = {}              # 当前对话轮数
 
     def add_memory(self,
-                   content: Dict[str, Any],
+                   role: str,
+                   content: str,
                    memory_id: str = 'default',
                    decay_factor: float = 0.9,
                    increment: float = 0.1):
@@ -24,6 +25,8 @@ class BaseMemory:
         添加记忆，并对该 Prompt 的记忆进行增强或衰减
 
         Args:
+            role: 记忆的角色
+            content: 记忆的内容
             memory_id (str): Prompt 的唯一标识符。
             content (Dict[str, Any]): 新的记忆内容。
             decay_factor (float): 对现有记忆的衰减系数。
@@ -39,7 +42,7 @@ class BaseMemory:
         for memory in self._memories[memory_id]:
             memory.decay(decay_factor)
 
-        new_memory = MemoryUnit(content=content)
+        new_memory = MemoryUnit(content={role: content})
         new_memory.reinforce(increment)
         self._memories[memory_id].append(new_memory)
 

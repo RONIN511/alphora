@@ -28,14 +28,18 @@ class GuideAgent(BaseAgent):
 
     async def guide(self, query):
         trans_agent = self.derive(TransAgent)  # 派生出一个智能体
-        prompt = self.create_prompt(prompt="你是一个导游，目前正在带领一个美国旅行团，游客说:{{query}}，你用中文回答")
+        history = self.memory.build_history()
+        prompt = self.create_prompt(prompt="你是一个导游，目前正在带领一个美国旅行团，你用中文回答游客的问题。\n\n历史记录：{{history}}\n\n游客说:{{query}}")
+        prompt.update_placeholder(history=history)
+        print(prompt.render())
         guide_resp = await prompt.acall(query=query, is_stream=True, force_json=False)
         res = await trans_agent.translate(query=guide_resp, target_lang='en')
+        self.memory.add_memory(role='游客', content='query')
+        self.memory.add_memory(role='导游', content=guide_resp)
         await self.stream.astop(stop_reason='111')
 
     async def api_logic(self, request: OpenAIRequest):
         query = request.get_user_query()
-        query = query[::-1]
         await self.guide(query)
 
 

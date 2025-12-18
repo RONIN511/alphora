@@ -450,6 +450,7 @@ class BasePrompt:
                     return PrompterOutput(content=output_str, reasoning="", finish_reason=finish_reason)
 
             except Exception as e:
+                await self.callback.stop(stop_reason=str(e))
                 raise f"流式响应时发生错误: {e}"
 
         else:

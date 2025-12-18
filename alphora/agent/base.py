@@ -342,6 +342,7 @@ class BaseAgent(object):
         original_func = getattr(self, method)
 
         path = f'{path}/chat/completions'
+
         @app.post(path)
         async def dynamic_endpoint(request: OpenAIRequest):
 

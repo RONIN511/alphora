@@ -11,7 +11,8 @@ import math
 class ShortTermMemory(BaseMemory):
 
     def add_memory(self,
-                   content: Dict[str, Any],
+                   role: str,
+                   content: str,
                    memory_id: str = 'default',
                    decay_factor: float = 0.9,
                    increment: float = 0.1):
@@ -40,7 +41,7 @@ class ShortTermMemory(BaseMemory):
             memory.decay(decay_factor)
 
         # 添加新记忆并增强
-        new_memory = MemoryUnit(content=content)
+        new_memory = MemoryUnit(content={role: content})
         new_memory.reinforce(increment)
         self._memories[memory_id].append(new_memory)
 
@@ -59,26 +60,3 @@ class ShortTermMemory(BaseMemory):
             return 1.0  # 当前对话不衰减
         return 1 / (1 + math.log(distance + 1))  # 对数衰减因子，随距离增加逐渐变小
 
-
-if __name__ == "__main__":
-    memory_manager = ShortTermMemory()
-
-    memory_manager.add_memory("prompt1", {"input": "Hello", "output": "Hi"})
-    memory_manager.add_memory("prompt1", {"input": "How are you?", "output": "I'm fine"})
-    memory_manager.add_memory("prompt1", {"input": "What’s your name?", "output": "I'm ChatGPT"})
-    memory_manager.add_memory("prompt1", {"input": "Tell me a joke", "output": "Why did the chicken cross the road?"})
-
-    print("\nPrompt1 Memories:")
-    for mem in memory_manager.get_memories("prompt1"):
-        print(mem)
-
-    # 查看分数最高的记忆
-    print("\nTop Memories for Prompt1:")
-    for mem in memory_manager.get_top_memories("prompt1"):
-        print(mem)
-
-    # 调用 build_history 方法
-    print("\nGenerated History for Prompt1:")
-    memories = memory_manager.get_memories("prompt1")
-    history = memory_manager.build_history("prompt1", max_length=200)
-    print(history)
