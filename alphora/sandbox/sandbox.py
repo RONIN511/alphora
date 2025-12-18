@@ -7,13 +7,9 @@ import json
 import time
 from typing import List, Dict, Any, Optional, Tuple, Union
 from pathlib import Path
-from chatbi.mcp import MCPServer
 import logging
-from chatbi.sandbox.file_reader import FileReaderFactory, FileReader
-from chatbi.utils.log import log_info, log_error
-from chatbi.agent import BaseAgent
-from chatbi.utils.base64 import base64_to_file
-from chatbi.models import LLM
+from alphora.sandbox.file_reader import FileReaderFactory, FileReader
+from alphora.agent import BaseAgent
 
 
 class Sandbox(BaseAgent):
@@ -46,14 +42,6 @@ class Sandbox(BaseAgent):
         self._ensure_dir_exists(self.sandbox_path)
 
         self.create_sandbox(session_id=int(time.time()))
-
-        # 注册沙箱目录资源
-        self.register_directory_with_files(
-            directory_path=self.sandbox_path,
-            uri_prefix="files://",
-            recursive=False,
-            exclude_patterns=[r"/\..*", r"__pycache__", r".*\.description$"]  # 排除隐藏文件和缓存
-        )
 
         # 检查现有文件是否有描述信息，没有则生成
         self._check_existing_files()
@@ -180,7 +168,6 @@ class Sandbox(BaseAgent):
 
         return resource_list
 
-    @MCPServer.tool()
     def execute_python(self, file_name: str) -> str:
         """
         执行Python代码文件
@@ -225,7 +212,6 @@ class Sandbox(BaseAgent):
         except Exception as e:
             raise f"执行错误: {str(e)}"
 
-    @MCPServer.tool()
     def save_file(self, content: str, file_name: str) -> None:
         """创建名为file_name的文件(需带文件后缀，例如README.md)，并将content提供的内容写入进去，内容长度不限"""
         target_path = Path(self.sandbox_path) / file_name
@@ -249,7 +235,29 @@ class Sandbox(BaseAgent):
         except Exception as e:
             logging.warning(f"无法为文件 {target_path} 生成描述: {str(e)}")
 
-    @MCPServer.tool()
+    async def asave_file(self, content: str, file_name: str) -> None:
+        """创建名为file_name的文件(需带文件后缀，例如README.md)，并将content提供的内容写入进去，内容长度不限"""
+        target_path = Path(self.sandbox_path) / file_name
+        # 防止路径穿越
+        if not str(target_path).startswith(self.sandbox_path):
+            raise ValueError("非法的文件路径，禁止路径穿越")
+
+        # 确保目录存在
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 写入文件
+        target_path.write_text(content, encoding='utf-8')
+        logging.info(f"文件已保存: {target_path}")
+
+        # 生成并保存文件描述
+        try:
+            # 使用FileReaderFactory读取文件并生成描述
+            file_info = await FileReaderFactory(**self.init_params).aread_file(file_path=target_path)
+            if file_info["description"]:
+                FileReader.save_description(target_path, file_info["description"])
+        except Exception as e:
+            logging.warning(f"无法为文件 {target_path} 生成描述: {str(e)}")
+
     def read_file(self, file_name: str) -> Dict[str, Any]:
         """读取指定文件内容和描述，返回包含content和description的字典"""
 
@@ -270,6 +278,37 @@ class Sandbox(BaseAgent):
             else:
                 # 使用FileReaderFactory读取文件内容和描述
                 file_info = FileReaderFactory(**self.init_params).read_file(file_path=target_path)
+                description = file_info["description"]
+                content = file_info["content"]
+
+            return {
+                "内容": content,
+                "概要信息": description
+            }
+
+        except Exception as e:
+            raise ValueError(f"文件读取错误: {str(e)}") from e
+
+    async def aread_file(self, file_name: str) -> Dict[str, Any]:
+        """读取指定文件内容和描述，返回包含content和description的字典"""
+
+        target_path = Path(self.sandbox_path) / file_name
+
+        if not target_path.is_file():
+            raise FileNotFoundError(f"文件不存在: {file_name}")
+
+        try:
+            # 检查描述文件是否存在
+            description_path = target_path.with_name(f"{target_path.name}.description")
+            if description_path.exists():
+                # 读取描述文件内容
+                description = description_path.read_text(encoding='utf-8')
+                # 读取文件内容
+                reader = FileReaderFactory(**self.init_params).create_reader(file_path=target_path)
+                content = reader.read(file_path=target_path)
+            else:
+                # 使用FileReaderFactory读取文件内容和描述
+                file_info = await FileReaderFactory(**self.init_params).aread_file(file_path=target_path)
                 description = file_info["description"]
                 content = file_info["content"]
 
@@ -316,8 +355,7 @@ class Sandbox(BaseAgent):
 
         # 执行安装
         stdout, stderr, code = self.execute_python(
-            "src/install_package.py",
-            timeout=60
+            "src/install_package.py"
         )
 
         return {
@@ -402,39 +440,249 @@ class Sandbox(BaseAgent):
                 "error": str(e)
             }
 
-    def upload_file(self,
-                    base64_content: str,
-                    target_file_name: str) -> str:
+    async def aadd_file(
+            self,
+            source_path: Optional[str] = None,
+            base64_content: Optional[str] = None,
+            url: Optional[str] = None,
+            target_file_name: Optional[str] = None,
+    ) -> str:
         """
-        将Base64编码的文件内容载入到沙箱环境中
+        向沙箱中添加文件，支持以下任一方式：
+          - 从本地路径复制 (source_path)
+          - 从 Base64 内容解码写入 (base64_content)
+          - 从 URL 下载 (url)
+
+        必须且只能指定其中一种来源。
+
+        Args:
+            source_path: 本地文件路径（相对于调用环境）
+            base64_content: Base64 编码的文件内容
+            url: 文件的网络地址（需可公开访问）
+            target_file_name: 沙箱内的目标文件名（含后缀）。若未提供，
+                              将尝试从 source_path 或 url 自动推导；
+                              使用 base64_content 时必须显式指定。
+
+        Returns:
+            文件的描述信息（description）
         """
+        from urllib.parse import urlparse
 
-        target_path = Path(self.sandbox_path)
+        sources = [source_path, base64_content, url]
+        provided = [s for s in sources if s is not None]
+        if len(provided) == 0:
+            raise ValueError("必须提供 source_path、base64_content 或 url 中的一个")
+        if len(provided) > 1:
+            raise ValueError("只能指定 source_path、base64_content 或 url 中的一个")
 
-        if target_file_name:
-            target_path /= target_file_name
-        else:
-            raise ValueError("target_file_name不能为空")
+        # 智能推导 target_file_name
+        if target_file_name is None:
+            if source_path is not None:
+                target_file_name = Path(source_path).name
+            elif url is not None:
+                parsed = urlparse(url)
+                name = Path(parsed.path).name
+                if not name or '.' not in name:
+                    raise ValueError(
+                        "无法从 URL 推断有效文件名（需包含扩展名），请显式指定 target_file_name"
+                    )
+                target_file_name = name
+            elif base64_content is not None:
+                raise ValueError("使用 base64_content 时必须指定 target_file_name")
+            else:
+                raise RuntimeError("未预期状态")
 
-        if not str(target_path).startswith(self.sandbox_path):
-            raise ValueError("非法的目标路径，禁止路径穿越")
+        # 安全校验：target_file_name 不能包含路径分隔符或以 . 开头（防止隐藏文件/路径穿越）
+        if not target_file_name or '/' in target_file_name or '\\' in target_file_name:
+            raise ValueError("target_file_name 不能包含路径分隔符")
+        if target_file_name.startswith('.'):
+            raise ValueError("target_file_name 不能以 '.' 开头（禁止隐藏文件）")
+
+        target_path = Path(self.sandbox_path) / target_file_name
+
+        # 路径安全校验（防止路径穿越）
+        try:
+            target_path = target_path.resolve(strict=False)
+            sandbox_root = Path(self.sandbox_path).resolve()
+            if not str(target_path).startswith(str(sandbox_root)):
+                raise ValueError("非法的目标路径，禁止路径穿越")
+        except Exception as e:
+            raise ValueError(f"路径解析失败: {e}")
+
+        target_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            base64_to_file(base64_content, target_path)
-            logging.info(f"Base64文件已载入: {target_path}")
+            if source_path is not None:
+                shutil.copy2(source_path, target_path)
+            elif base64_content is not None:
+                from alphora.utils.base64 import base64_to_file
+                base64_to_file(base64_content, target_path)
+            elif url is not None:
+                # 动态导入 requests，避免硬依赖
+                try:
+                    import requests
+                except ImportError:
+                    raise ImportError("使用 URL 上传需要安装 'requests' 库")
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                target_path.write_bytes(response.content)
+            else:
+                raise RuntimeError("未预期的分支")
 
-            file_info = FileReaderFactory(**self.init_params).read_file(
-                file_path=target_path
-            )
+            logging.info(f"文件已添加到沙箱: {target_path}")
 
-            if file_info["description"]:
-                FileReader.save_description(target_path, file_info["description"])
-                return file_info["description"]
+            # 自动生成描述
+            file_info = await FileReaderFactory(**self.init_params).aread_file(file_path=target_path)
+            description = file_info.get("description", "")
+            if description:
+                FileReader.save_description(target_path, description)
 
-            return ""
+            return description
 
         except Exception as e:
-            raise e
+            # 清理可能残留的文件
+            if target_path.exists():
+                target_path.unlink()
+            raise RuntimeError(f"添加文件失败: {e}") from e
+
+    def add_file(
+            self,
+            source_path: Optional[str] = None,
+            base64_content: Optional[str] = None,
+            url: Optional[str] = None,
+            target_file_name: Optional[str] = None,
+    ) -> str:
+        """
+        向沙箱中添加文件，支持以下任一方式：
+          - 从本地路径复制 (source_path)
+          - 从 Base64 内容解码写入 (base64_content)
+          - 从 URL 下载 (url)
+
+        必须且只能指定其中一种来源。
+
+        Args:
+            source_path: 本地文件路径（相对于调用环境）
+            base64_content: Base64 编码的文件内容
+            url: 文件的网络地址（需可公开访问）
+            target_file_name: 沙箱内的目标文件名（含后缀）。若未提供，
+                              将尝试从 source_path 或 url 自动推导；
+                              使用 base64_content 时必须显式指定。
+
+        Returns:
+            文件的描述信息（description）
+        """
+        from urllib.parse import urlparse
+
+        sources = [source_path, base64_content, url]
+        provided = [s for s in sources if s is not None]
+        if len(provided) == 0:
+            raise ValueError("必须提供 source_path、base64_content 或 url 中的一个")
+        if len(provided) > 1:
+            raise ValueError("只能指定 source_path、base64_content 或 url 中的一个")
+
+        # 智能推导 target_file_name
+        if target_file_name is None:
+            if source_path is not None:
+                target_file_name = Path(source_path).name
+            elif url is not None:
+                parsed = urlparse(url)
+                name = Path(parsed.path).name
+                if not name or '.' not in name:
+                    raise ValueError(
+                        "无法从 URL 推断有效文件名（需包含扩展名），请显式指定 target_file_name"
+                    )
+                target_file_name = name
+            elif base64_content is not None:
+                raise ValueError("使用 base64_content 时必须指定 target_file_name")
+            else:
+                raise RuntimeError("未预期状态")
+
+        # 安全校验：target_file_name 不能包含路径分隔符或以 . 开头（防止隐藏文件/路径穿越）
+        if not target_file_name or '/' in target_file_name or '\\' in target_file_name:
+            raise ValueError("target_file_name 不能包含路径分隔符")
+        if target_file_name.startswith('.'):
+            raise ValueError("target_file_name 不能以 '.' 开头（禁止隐藏文件）")
+
+        target_path = Path(self.sandbox_path) / target_file_name
+
+        # 路径安全校验（防止路径穿越）
+        try:
+            target_path = target_path.resolve(strict=False)
+            sandbox_root = Path(self.sandbox_path).resolve()
+            if not str(target_path).startswith(str(sandbox_root)):
+                raise ValueError("非法的目标路径，禁止路径穿越")
+        except Exception as e:
+            raise ValueError(f"路径解析失败: {e}")
+
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if source_path is not None:
+                shutil.copy2(source_path, target_path)
+            elif base64_content is not None:
+                from alphora.utils.base64 import base64_to_file
+                base64_to_file(base64_content, target_path)
+            elif url is not None:
+                # 动态导入 requests，避免硬依赖
+                try:
+                    import requests
+                except ImportError:
+                    raise ImportError("使用 URL 上传需要安装 'requests' 库")
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                target_path.write_bytes(response.content)
+            else:
+                raise RuntimeError("未预期的分支")
+
+            logging.info(f"文件已添加到沙箱: {target_path}")
+
+            # 自动生成描述
+            file_info = FileReaderFactory(**self.init_params).read_file(file_path=target_path)
+            description = file_info.get("description", "")
+            if description:
+                FileReader.save_description(target_path, description)
+
+            return description
+
+        except Exception as e:
+            # 清理可能残留的文件
+            if target_path.exists():
+                target_path.unlink()
+            raise RuntimeError(f"添加文件失败: {e}") from e
+
+    # def upload_file(self,
+    #                 base64_content: str,
+    #                 target_file_name: str) -> str:
+    #     """
+    #     将Base64编码的文件内容载入到沙箱环境中
+    #     """
+    #
+    #     target_path = Path(self.sandbox_path)
+    #
+    #     if target_file_name:
+    #         target_path /= target_file_name
+    #     else:
+    #         raise ValueError("target_file_name不能为空")
+    #
+    #     if not str(target_path).startswith(self.sandbox_path):
+    #         raise ValueError("非法的目标路径，禁止路径穿越")
+    #
+    #     try:
+    #         base64_to_file(base64_content, target_path)
+    #         logging.info(f"Base64文件已载入: {target_path}")
+    #
+    #         file_info = FileReaderFactory(**self.init_params).read_file(
+    #             file_path=target_path
+    #         )
+    #
+    #         if file_info["description"]:
+    #             FileReader.save_description(target_path, file_info["description"])
+    #             return file_info["description"]
+    #
+    #         return ""
+    #
+    #     except Exception as e:
+    #         raise e
 
     def is_empty(self) -> bool:
         """
@@ -520,21 +768,20 @@ class Sandbox(BaseAgent):
 
 
 if __name__ == '__main__':
-    from chatbi.models import LLM
-    from chatbi.utils.base64 import file_to_base64
+    from alphora.models import OpenAILike
+    from alphora.utils.base64 import file_to_base64
 
-    img_file = "/Users/tiantiantian/工作/梧桐ChatBI/3-测评/交通主题/交通工具数据.xlsx"
-    img_b64 = file_to_base64(img_file)
+    llm = OpenAILike(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                     api_key="sk-3d3f75c8f74b46ceb8397b69218667fd",
+                     model_name='qwen-vl-max-latest',
+                     is_multimodal=True)
 
-    vllm = LLM(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-               api_key="sk-3d3f75c8f74b46ceb8397b69218667fd",
-               model_name='qwen-vl-max-latest')
-
-    llm = LLM()
+    file = "/Users/tiantiantian/Code/宝藏小工具/ai2md.py"
 
     sb = Sandbox(sandbox_path='/Users/tiantiantian/临时/chatbi_workspace/sandbox/test',
-                 llm=llm,
-                 vision_llm=vllm)
+                 llm=llm)
 
-    sb.upload_file(base64_content=img_b64, target_file_name='交通数据.xlsx')
+    desc = sb.add_file(source_path=file)
+    print(desc)
+    print('111')
     sb.list_resource()

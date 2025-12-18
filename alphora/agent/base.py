@@ -109,12 +109,14 @@ class BaseAgent(object):
             self,
             prompt: str = None,
             template_path: str = None,
-            template_desc: str = "") -> BasePrompt:
+            template_desc: str = "",
+            content_type: Optional[str] = None) -> BasePrompt:
         """
         快速创建提示词模板
         Args:
             template_path: 提示词路径（建议为相对路径）
             template_desc: 提示词描述
+            content_type: 当调用 acall 方法时，输出的流的 content_type
             prompt: Optional
 
         Returns: BasePrompt实例
@@ -127,6 +129,7 @@ class BaseAgent(object):
             template_path=template_path,
             template_desc=template_desc,
             callback=self.callback,
+            content_type=content_type
         )
 
         try:

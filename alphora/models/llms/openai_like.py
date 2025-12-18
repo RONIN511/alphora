@@ -15,14 +15,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-class APIInvalidResponse(Exception):
-    pass
-
-
-class APIParameterError(ValueError):
-    pass
-
-
 class OpenAILike(BaseLLM):
     def __init__(
             self,
@@ -32,7 +24,8 @@ class OpenAILike(BaseLLM):
             header: Optional[Mapping[str, str]] = None,
             temperature: float = 0.0,
             max_tokens: int = 1024,
-            top_p: float = 1.0
+            top_p: float = 1.0,
+            is_multimodal: bool = False,
     ):
 
         super().__init__(model_name=model_name,
@@ -41,7 +34,8 @@ class OpenAILike(BaseLLM):
                          header=header,
                          temperature=temperature,
                          max_tokens=max_tokens,
-                         top_p=top_p)
+                         top_p=top_p,
+                         is_multimodal=is_multimodal)
 
         self.model_name = model_name or os.getenv("DEFAULT_LLM")
         self.api_key = api_key or os.getenv("LLM_API_KEY")
@@ -71,7 +65,8 @@ class OpenAILike(BaseLLM):
         self._balancer = _LLMLoadBalancer()
         self._balancer.add_client(sync_client=self._sync_client,
                                   async_client=self._async_client,
-                                  completion_params=self.completion_params)
+                                  completion_params=self.completion_params,
+                                  is_multimodal=self.is_multimodal)
 
     def _prepare_messages(self,
                           message: Union[str, Message],
@@ -105,12 +100,20 @@ class OpenAILike(BaseLLM):
         :param system_prompt:
         :return:
         """
+        multi_model_msg = False
+
+        if isinstance(message, Message):
+            if message.has_images() or message.has_audios() or message.has_videos():
+                multi_model_msg = True
 
         messages = self._prepare_messages(message=message, system_prompt=system_prompt)
 
         start = time.time()
 
-        client, params = self._balancer.get_next_sync_backend()
+        try:
+            client, params = self._balancer.get_next_sync_backend(need_multimodal=multi_model_msg)
+        except Exception as e:
+            raise RuntimeError(f"llm error: {e}")
 
         completion = client.chat.completions.create(
             **params,
@@ -123,7 +126,7 @@ class OpenAILike(BaseLLM):
         elapsed = round(time.time() - start, 2)
 
         if not completion.choices:
-            raise APIInvalidResponse("No choices returned from LLM.")
+            raise RuntimeError("No choices returned from LLM.")
 
         content = completion.choices[0].message.content or ""
 
@@ -152,10 +155,18 @@ class OpenAILike(BaseLLM):
         :param system_prompt:
         :return:
         """
+        multi_model_msg = False
+
+        if isinstance(message, Message):
+            if message.has_images() or message.has_audios() or message.has_videos():
+                multi_model_msg = True
 
         messages = self._prepare_messages(message=message, system_prompt=system_prompt)
 
-        sync_client, params = self._balancer.get_next_sync_backend()
+        try:
+            sync_client, params = self._balancer.get_next_sync_backend(need_multimodal=multi_model_msg)
+        except Exception as e:
+            raise RuntimeError(f"llm error: {e}")
 
         stream = sync_client.chat.completions.create(
             **params,
@@ -199,10 +210,19 @@ class OpenAILike(BaseLLM):
         :param system_prompt:
         :return:
         """
+        multi_model_msg = False
+
+        if isinstance(message, Message):
+            if message.has_images() or message.has_audios() or message.has_videos():
+                multi_model_msg = True
+
         messages = self._prepare_messages(message=message, system_prompt=system_prompt)
         start = time.time()
 
-        async_client, params = self._balancer.get_next_async_backend()
+        try:
+            async_client, params = self._balancer.get_next_async_backend(need_multimodal=multi_model_msg)
+        except Exception as e:
+            raise RuntimeError(f"llm error: {e}")
 
         completion = await async_client.chat.completions.create(
             **params,
@@ -212,7 +232,7 @@ class OpenAILike(BaseLLM):
         )
         elapsed = round(time.time() - start, 2)
         if not completion.choices:
-            raise APIInvalidResponse("No choices returned from LLM.")
+            raise RuntimeError("No choices returned from LLM.")
 
         content = completion.choices[0].message.content or ""
 
@@ -240,10 +260,18 @@ class OpenAILike(BaseLLM):
         :return:
         """
 
+        multi_model_msg = False
+
+        if isinstance(message, Message):
+            if message.has_images() or message.has_audios() or message.has_videos():
+                multi_model_msg = True
+
         messages = self._prepare_messages(message=message, system_prompt=system_prompt)
 
-        # 大模型负载均衡
-        async_client, params = self._balancer.get_next_async_backend()
+        try:
+            async_client, params = self._balancer.get_next_async_backend(need_multimodal=multi_model_msg)
+        except Exception as e:
+            raise RuntimeError(f"llm error: {e}")
 
         stream = await async_client.chat.completions.create(
             **params,
@@ -283,17 +311,17 @@ class OpenAILike(BaseLLM):
 
     def set_temperature(self, temp: float):
         if not (0.0 <= temp <= 1.0):
-            raise APIParameterError("temperature must be between 0.0 and 1.0")
+            raise RuntimeError("temperature must be between 0.0 and 1.0")
         self.temperature = temp
 
     def set_max_tokens(self, tokens: int):
         if tokens <= 0:
-            raise APIParameterError("max_tokens must be > 0")
+            raise RuntimeError("max_tokens must be > 0")
         self.max_tokens = tokens
 
     def set_top_p(self, p: float):
         if not (0.0 <= p <= 1.0):
-            raise APIParameterError("top_p must be between 0.0 and 1.0")
+            raise RuntimeError("top_p must be between 0.0 and 1.0")
         self.top_p = p
 
     def set_model_name(self, name: str):

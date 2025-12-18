@@ -15,7 +15,8 @@ class BaseLLM(ABC):
             system_prompt: Optional[str] = None,
             temperature: float = 0.0,
             max_tokens: int = 1024,
-            top_p: float = 1.0
+            top_p: float = 1.0,
+            is_multimodal: bool = False
     ):
 
         self.model_name = model_name
@@ -26,6 +27,7 @@ class BaseLLM(ABC):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.top_p = top_p
+        self.is_multimodal = is_multimodal
 
         self.post_processors = {}
 

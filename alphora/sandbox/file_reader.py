@@ -2,16 +2,13 @@ import json
 import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple, Union, Callable, Type
 from pathlib import Path
-from chatbi.models import LLM
-from chatbi.agent import BaseAgent
-
-# Import Prompts
-from chatbi.sandbox.prompts.excel_prompt import excel_prompt
-from chatbi.sandbox.prompts.image_prompt import image_prompt
+from alphora.models import OpenAILike
+from alphora.agent.base import BaseAgent
+from alphora.sandbox.prompts.excel_prompt import excel_prompt
+from alphora.sandbox.prompts.image_prompt import image_prompt
 
 
 class FileReader(BaseAgent):
-
     desc, content = "", ""
 
     def read(self, file_path: Union[Path, str]) -> str:
@@ -19,6 +16,10 @@ class FileReader(BaseAgent):
         raise NotImplementedError("子类必须实现此方法")
 
     def description(self, file_path: Union[Path, str]) -> str:
+        """生成文件描述"""
+        raise NotImplementedError("子类必须实现此方法")
+
+    async def adescription(self, file_path: Union[Path, str]) -> str:
         """生成文件描述"""
         raise NotImplementedError("子类必须实现此方法")
 
@@ -59,6 +60,43 @@ class TextFileReader(FileReader):
         prompt = f"为以下文本生成一个简洁的描述:\n\n{content}"
         return self.llm.invoke(prompt)
 
+    async def adescription(self, file_path: Union[Path, str]) -> str:
+        """生成文本文件描述"""
+        if not self.llm:
+            return "文本文件描述信息不可用（未提供LLM）"
+
+        content = self.read(file_path)
+        if len(content) > 1000:
+            content = content[:1000] + "..."  # 截断长文本
+
+        prompt = f"为以下文本生成一个简洁的描述:\n\n{content}"
+        return await self.llm.ainvoke(prompt)
+
+
+class PythonReader(FileReader):
+    def read(self, file_path: Union[Path, str]) -> str:
+        """读取数据库文件内容"""
+        file_path = Path(file_path)
+        return file_path.read_text(encoding='utf-8')
+
+    def description(self, file_path: Union[Path, str]) -> str:
+        """生成数据库文件描述"""
+        if not self.llm:
+            return "数据库文件描述信息不可用（未提供LLM）"
+
+        content = self.read(file_path)
+        prompt = f"为以下python代码生成一个简洁的描述:\n\n{content}"
+        return self.llm.invoke(prompt)
+
+    async def adescription(self, file_path: Union[Path, str]) -> str:
+        """生成数据库文件描述"""
+        if not self.llm:
+            return "数据库文件描述信息不可用（未提供LLM）"
+
+        content = self.read(file_path)
+        prompt = f"为以下python代码生成一个简洁的描述:\n\n{content}"
+        return await self.llm.ainvoke(prompt)
+
 
 class DataBaseReader(FileReader):
     """数据库文件读取器"""
@@ -77,6 +115,15 @@ class DataBaseReader(FileReader):
         prompt = f"为以下数据库内容生成一个简洁的描述:\n\n{content}"
         return self.llm.invoke(prompt)
 
+    async def adescription(self, file_path: Union[Path, str]) -> str:
+        """生成数据库文件描述"""
+        if not self.llm:
+            return "数据库文件描述信息不可用（未提供LLM）"
+
+        content = self.read(file_path)
+        prompt = f"为以下数据库内容生成一个简洁的描述:\n\n{content}"
+        return await self.llm.ainvoke(prompt)
+
 
 class ExcelFileReader(FileReader):
     """Excel文件读取器"""
@@ -94,16 +141,28 @@ class ExcelFileReader(FileReader):
 
         file_path = Path(file_path)
         file_name = file_path.name
-        self.stream.stream_message(content=f'我正在对数据表进行分析。\n',
-                                   content_type='m_text',
-                                   interval=0.02)
 
         raw_data = pd.read_excel(file_path)
         data_str: str = raw_data.head(5).to_markdown()
         excel_desc_prompt = self.create_prompt(prompt=excel_prompt)
         excel_desc_prompt.update_placeholder(table_str=data_str)
-        excel_desc: str = excel_desc_prompt.call(query=None, is_stream=True,
-                                                 content_type='m_text', return_generator=False)
+        excel_desc: str = excel_desc_prompt.call(query=None, is_stream=True, return_generator=False)
+
+        return excel_desc
+
+    async def adescription(self, file_path: Union[Path, str]) -> str:
+        """生成Excel文件描述"""
+        if not self.llm:
+            return "Excel文件描述信息不可用（未提供LLM）"
+
+        file_path = Path(file_path)
+        file_name = file_path.name
+
+        raw_data = pd.read_excel(file_path)
+        data_str: str = raw_data.head(5).to_markdown()
+        excel_desc_prompt = self.create_prompt(prompt=excel_prompt)
+        excel_desc_prompt.update_placeholder(table_str=data_str)
+        excel_desc: str = await excel_desc_prompt.acall(query=None, is_stream=False)
 
         return excel_desc
 
@@ -125,6 +184,15 @@ class CSVFileReader(FileReader):
         prompt = f"为以下CSV数据生成一个简洁的描述:\n\n{content}"
         return self.llm.invoke(prompt)
 
+    async def adescription(self, file_path: Union[Path, str]) -> str:
+        """生成CSV文件描述"""
+        if not self.llm:
+            return "CSV文件描述信息不可用（未提供LLM）"
+
+        content = self.read(file_path)
+        prompt = f"为以下CSV数据生成一个简洁的描述:\n\n{content}"
+        return await self.llm.ainvoke(prompt)
+
 
 class ImageFileReader(FileReader):
 
@@ -133,29 +201,44 @@ class ImageFileReader(FileReader):
         return self.desc
 
     def description(self, file_path: Union[Path, str]) -> str:
-        from chatbi.models import Message
-        from chatbi.utils.base64 import file_to_base64
-
-        if not self.vision_llm:
-            return "图片文件描述信息不可用（未提供视觉大模型）"
+        from alphora.models.message import Message
+        from alphora.utils.base64 import file_to_base64
 
         file_path = Path(file_path)
         file_name = file_path.name
         file_suffix = file_path.suffix.lower().lstrip('.')
 
-        self.stream.stream_message(content=f'我正在对图片进行分析。\n',
-                                   content_type='m_text',
-                                   interval=0.02)
+        message = Message()
+        img_b64 = file_to_base64(file_path=file_path)
+        message.add_image(data=img_b64, format=file_suffix)
+
+        image_desc_prompt = self.create_prompt(prompt=image_prompt)
+
+        image_desc = image_desc_prompt.call(query=None,
+                                            multimodal_message=message,
+                                            is_stream=False)
+
+        self.desc = image_desc
+
+        return image_desc
+
+    async def adescription(self, file_path: Union[Path, str]) -> str:
+        from alphora.models.message import Message
+        from alphora.utils.base64 import file_to_base64
+
+        file_path = Path(file_path)
+        file_name = file_path.name
+        file_suffix = file_path.suffix.lower().lstrip('.')
 
         message = Message()
         img_b64 = file_to_base64(file_path=file_path)
         message.add_image(data=img_b64, format=file_suffix)
 
-        image_desc_prompt = self.create_prompt(prompt=image_prompt, model=self.vision_llm)
+        image_desc_prompt = self.create_prompt(prompt=image_prompt)
 
-        image_desc = image_desc_prompt.call(query=None, multimodal_message=message,
-                                            content_type='m_text', return_generator=False,
-                                            is_stream=True)
+        image_desc = await image_desc_prompt.acall(query=None,
+                                                   multimodal_message=message,
+                                                   is_stream=False)
 
         self.desc = image_desc
 
@@ -181,6 +264,7 @@ class FileReaderFactory:
         'gif': ImageFileReader,
         'jpeg': ImageFileReader,
         'db': DataBaseReader,
+        'py': PythonReader
     }
 
     def get_reader(self, extension: str) -> Callable[[Path], Any]:
@@ -199,7 +283,7 @@ class FileReaderFactory:
         reader_class = FileReaderFactory.READER_CLASSES[ext]
         return reader_class(**self.params).read
 
-    def create_reader(self, file_path: Union[Path, str],) -> FileReader:
+    def create_reader(self, file_path: Union[Path, str], ) -> FileReader:
         """
         根据文件路径创建适当的FileReader实例
         Args:
@@ -235,13 +319,45 @@ class FileReaderFactory:
             "description": description
         }
 
+    async def aread_file(self, file_path: Union[Path, str]) -> Dict[str, str]:
+        """
+        读取文件内容并生成描述
+        Args:
+            file_path: 文件路径
+        Returns:
+            包含内容和描述的字典
+        """
+        reader = self.create_reader(file_path=file_path)
+        content = reader.read(file_path)
+        description = await reader.adescription(file_path)
+
+        FileReader.save_description(file_path, description)
+
+        return {
+            "content": content,
+            "description": description
+        }
+
 
 if __name__ == '__main__':
-    from chatbi.models import LLM
+    from alphora.models import OpenAILike
 
-    lm = LLM(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-             api_key="sk-3d3f75c8f74b46ceb8397b69218667fd",
-             model_name='qwen-vl-max-latest')
+    # lm1 = OpenAILike(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    #                  api_key="sk-3d3f75c8f74b46ceb8397b69218667fd",
+    #                  model_name='qwen-vl-max-latest',
+    #                  is_multimodal=True)
 
-    ifr = ImageFileReader(vision_llm=lm)
+    lm1 = OpenAILike(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                     api_key="sk-3d3f75c8f74b46ceb8397b69218667fd",
+                     model_name='qwen-plus',
+                     is_multimodal=False)
+
+    lm2 = OpenAILike(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                     api_key="sk-3d3f75c8f74b46ceb8397b69218667fd",
+                     model_name='qwen-plus',
+                     is_multimodal=False)
+
+    lm = lm1 + lm2
+
+    ifr = ImageFileReader(llm=lm)
     ifr.description(file_path='/Users/tiantiantian/Downloads/绘制卡通画.png')

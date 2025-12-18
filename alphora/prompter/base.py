@@ -46,6 +46,7 @@ class BasePrompt:
                  template_desc: str = "",
                  verbose: bool = False,
                  callback: Optional[DataStreamer] = None,
+                 content_type: Optional[str] = None,
                  **kwargs):
 
         """
@@ -63,7 +64,7 @@ class BasePrompt:
         self.llm: BaseLLM | None = None
         self.callback: Optional[DataStreamer] = callback
         self.verbose: bool = verbose
-
+        self.content_type = content_type or 'char'
         self.context = kwargs
 
         self._resolved_prompt = None
@@ -217,7 +218,7 @@ class BasePrompt:
              is_stream: bool = False,
              multimodal_message: Message = None,  # 多模态数据
              return_generator: bool = False,
-             content_type: str = 'text',
+             content_type: str = None,
              postprocessor: 'BasePostProcessor' | Callable[[BaseGenerator], BaseGenerator] |
                             List['BasePostProcessor'] | List[Callable[[BaseGenerator], BaseGenerator]] | None = None,
              enable_thinking: bool = False,
@@ -319,7 +320,7 @@ class BasePrompt:
                     return PrompterOutput(content=output_str, reasoning="", finish_reason=finish_reason)
 
             except Exception as e:
-                raise f"流式响应时发生错误: {e}"
+                raise RuntimeError(f"流式响应时发生错误: {e}")
 
         else:
             """
@@ -332,14 +333,14 @@ class BasePrompt:
                 return PrompterOutput(content=resp, reasoning="", finish_reason="")
 
             except Exception as e:
-                raise e
+                raise RuntimeError(f"非流式响应时发生错误: {e}")
 
     async def acall(self,
                     query: str = None,
                     is_stream: bool = False,
                     multimodal_message: Message = None,  # 多模态数据
                     return_generator: bool = False,
-                    content_type: str = 'text',
+                    content_type: Optional[str] = None,
                     postprocessor: 'BasePostProcessor' | Callable[[BaseGenerator], BaseGenerator] |
                                    List['BasePostProcessor'] | List[
                                        Callable[[BaseGenerator], BaseGenerator]] | None = None,
@@ -362,6 +363,9 @@ class BasePrompt:
 
         if not self.llm:
             raise ValueError("LLM not initialized")
+
+        if not content_type:
+            content_type = self.content_type or 'char'
 
         system_prompt = None
 
@@ -437,7 +441,7 @@ class BasePrompt:
                     try:
                         output_str = json.dumps(json.loads(repair_json(json_str=output_str)), ensure_ascii=False)
                     except Exception as e:
-                        raise Exception(e)
+                        raise RuntimeError(f"流式响应时发生错误: {e}")
 
                 finish_reason = generator_with_content_type.finish_reason
 
@@ -451,7 +455,7 @@ class BasePrompt:
 
             except Exception as e:
                 await self.callback.stop(stop_reason=str(e))
-                raise f"流式响应时发生错误: {e}"
+                raise RuntimeError(f"流式响应时发生错误: {e}")
 
         else:
             """
@@ -464,7 +468,7 @@ class BasePrompt:
                 return PrompterOutput(content=resp, reasoning="", finish_reason="")
 
             except Exception as e:
-                raise e
+                raise RuntimeError(f"非流式响应时发生错误: {e}")
 
     def update_placeholder(self, **kwargs):
         """更新占位符值"""
@@ -496,9 +500,9 @@ class BasePrompt:
         try:
             rendered = self.render()
             if not rendered.strip():
-                return f"BasePrompt (ID: {self.prompt_id}) - 模板未渲染或内容为空"
+                return f"BasePrompt - 模板未渲染或内容为空"
 
             return rendered
 
         except Exception as e:
-            return f"BasePrompt (ID: {self.prompt_id}) - 渲染错误: {str(e)}"
+            return f"BasePrompt (渲染错误: {str(e)})"
