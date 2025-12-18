@@ -38,13 +38,13 @@ async def stream():
     asyncio.create_task(agent.execute())
 
     # 阻塞式输出
-    return await streamer.start_non_streaming_openai()
+    # return await streamer.start_non_streaming_openai()
 
     # 流式输出
-    # return streamer.start_streaming_openai()
+    return streamer.start_streaming_openai()
 
 import uvicorn
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
