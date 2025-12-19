@@ -27,13 +27,9 @@ class BaseAgent(object):
                  verbose: bool = False,
                  memory: Optional[BaseMemory] = None,
                  agent_id: Optional[str] = None,
-                 callback: Optional[DataStreamer] = None,
                  **kwargs):
 
-        if not callback:
-            self.callback = DataStreamer(timeout=300)
-        else:
-            self.callback = callback
+        self.callback = DataStreamer(timeout=300)
 
         self.agent_id = agent_id or str(uuid4())
 

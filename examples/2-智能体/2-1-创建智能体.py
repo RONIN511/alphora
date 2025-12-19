@@ -13,12 +13,19 @@ llm = OpenAILike(api_key=llm_api_key, base_url=llm_base_url, model_name='qwen-pl
 
 
 class Agent(BaseAgent):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.counter = 0
+
     async def execute(self):
+        self.counter += 1
+        print('DEBUG', self.counter)
         prompt1 = "你是一个翻译官:{{ query }}，将翻译到{{ target_lang }}"
         prompt = self.create_prompt(prompt=prompt1)
         prompt.update_placeholder(target_lang='en')
-        result = await prompt.acall(query='你好,中国移动是中国创办的一家中央企业', is_stream=True, force_json=True)
-
+        result = await prompt.acall(query='你好,中国移动是中国创办的一家中央企业', is_stream=True)
+        print(result)
         await self.stream.astream_message(content='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
         await self.stream.astop(stop_reason='end')
 
