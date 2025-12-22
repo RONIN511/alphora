@@ -5,6 +5,8 @@ import asyncio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from copy import copy
+
 from alphora.agent.base import BaseAgent
 from alphora.server.openai_request_body import OpenAIRequest
 from alphora.server.stream_responser import DataStreamer
@@ -19,16 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 def create_api_router(
-        agent_cls: Type[BaseAgent],
-        agent_init_kwargs: Dict[str, Any],
+        agent: BaseAgent,
         method_name: str,
         memory_pool: MemoryPool,
         config: APIPublisherConfig
 ) -> APIRouter:
     """
     创建API路由
-    :param agent_cls: Agent类
-    :param agent_init_kwargs: Agent初始化参数
+    :param agent: Agent类
     :param method_name: 要暴露的方法名
     :param memory_pool: 记忆池实例
     :param config: 配置
@@ -41,17 +41,15 @@ def create_api_router(
     if config.path.endswith("/"):
         full_api_path = f"{config.path[:-1]}/chat/completions"
 
-    @router.post(
-        full_api_path,
-        response_description="OpenAI兼容格式的响应",
-    )
+    @router.post(full_api_path, response_description="OpenAI兼容格式的响应")
     async def agent_api_endpoint(request: OpenAIRequest):
         """每次请求创建全新Agent实例 + 关联会话记忆"""
         try:
-            # 确定记忆类（优先使用Agent类的默认记忆类）
+            # 确定记忆类
             memory_cls = ShortTermMemory
-            if hasattr(agent_cls, 'default_memory_cls') and issubclass(agent_cls.default_memory_cls, BaseMemory):
-                memory_cls = agent_cls.default_memory_cls
+
+            if hasattr(agent, 'default_memory_cls') and issubclass(agent.default_memory_cls, BaseMemory):
+                memory_cls = agent.default_memory_cls
 
             # 获取/创建会话记忆
             session_id, session_memory = memory_pool.get_or_create(
@@ -59,18 +57,19 @@ def create_api_router(
                 memory_cls=memory_cls
             )
 
-            logger.debug(f"处理请求 - session_id: {session_id}，准备创建全新 {agent_cls.__name__} 实例")
+            logger.debug(f"处理请求 - session_id: {session_id}，准备创建全新 {agent.__class__.__name__} 实例")
 
             # 创建全新Agent实例
-            new_agent = agent_cls(**agent_init_kwargs)
+            new_agent = copy(agent)
 
             # 配置Agent实例（会话隔离）
             new_agent.memory = session_memory
+
             new_callback = DataStreamer(timeout=300)
             new_agent.callback = new_callback
             new_agent.stream = Stream(callback=new_callback)
 
-            # 执行Agent方法（异步非阻塞）
+            # 执行Agent方法
             agent_method = getattr(new_agent, method_name)
             _ = asyncio.create_task(agent_method(request))
 

@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def publish_agent_api(
-        agent_cls: Type[BaseAgent],
-        agent_init_kwargs: Dict[str, Any],
+        agent: BaseAgent,
         method: str,
         config: Optional[APIPublisherConfig] = None
 ) -> FastAPI:
@@ -26,8 +25,7 @@ def publish_agent_api(
     将指定Agent类的指定方法发布为FastAPI接口
 
     Args:
-        agent_cls: BaseAgent子类
-        agent_init_kwargs: Agent初始化参数（如{"llm": llm_instance}）
+        agent: Agent Object
         method: 要暴露的异步方法名（需接收OpenAIRequest类型参数）
         config: API发布器配置（可选）
 
@@ -42,16 +40,16 @@ def publish_agent_api(
     config = config or APIPublisherConfig()
 
     # 校验Agent类和方法
-    validate_agent_class(agent_cls)
-    validate_agent_method(agent_cls, agent_init_kwargs, method)
+    validate_agent_class(agent)
+    validate_agent_method(agent, method)
 
     # 创建FastAPI应用
     app = FastAPI(
-        title=config.api_title.format(agent_name=agent_cls.__name__)
+        title=config.api_title.format(agent_name=agent.__class__.__name__)
         if "{agent_name}" in config.api_title
         else config.api_title,
         description=config.api_description.format(
-            agent_name=agent_cls.__name__,
+            agent_name=agent.__class__.__name__,
             method_name=method
         ) if "{agent_name}" in config.api_description or "{method_name}" in config.api_description
         else config.api_description
@@ -66,8 +64,7 @@ def publish_agent_api(
     task_manager = BackgroundTaskManager()
 
     api_router = create_api_router(
-        agent_cls=agent_cls,
-        agent_init_kwargs=agent_init_kwargs,
+        agent=agent,
         method_name=method,
         memory_pool=memory_pool,
         config=config
@@ -87,26 +84,25 @@ def publish_agent_api(
         )
 
         # 打印启动信息
-        _print_startup_info(agent_cls, method, config, memory_pool, agent_init_kwargs)
+        _print_startup_info(agent, method, config, memory_pool)
 
     @app.on_event("shutdown")
     async def shutdown():
         """关闭钩子"""
         await task_manager.stop_all_tasks()
-        logger.info(f"{agent_cls.__name__} API服务已关闭")
+        logger.info(f"{agent.__class__.__name__} API服务已关闭")
 
     return app
 
 
 def _print_startup_info(
-        agent_cls: Type[BaseAgent],
+        agent: BaseAgent,
         method: str,
         config: APIPublisherConfig,
-        memory_pool: MemoryPool,
-        agent_init_kwargs: Dict[str, Any]
+        memory_pool: MemoryPool
 ) -> None:
     # 获取LLM信息
-    llm_instance = agent_init_kwargs.get("llm")
+    llm_instance = agent.llm
     llm_info = llm_instance.model_name if (llm_instance and hasattr(llm_instance, "model_name")) else "未配置"
 
     full_api_path = f"{config.path}/chat/completions"
@@ -115,7 +111,7 @@ def _print_startup_info(
 
     startup_info = {
         "Agent基础信息": {
-            "Agent类名": agent_cls.__name__,
+            "Agent类名": agent.__class__.__name__,
             "暴露方法": method,
             "实例策略": "每次请求创建全新Agent实例",
             "LLM模型": llm_info
@@ -140,7 +136,7 @@ def _print_startup_info(
     }
 
     logger.info("=" * 90)
-    logger.info(f"✅ {agent_cls.__name__} API服务启动成功")
+    logger.info(f"✅ {agent.__class__.__name__} API服务启动成功")
     logger.info("=" * 90)
     for section, info in startup_info.items():
         logger.info(f"\n【{section}】")

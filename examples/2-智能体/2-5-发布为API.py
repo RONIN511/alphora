@@ -37,10 +37,7 @@ if __name__ == '__main__':
     import uvicorn
     from alphora.server.quick_api import publish_agent_api, APIPublisherConfig
 
-    agent_init_kwargs = {
-        "llm": llm,
-        "verbose": True
-    }
+    agent = TeacherAgent(llm=llm)
 
     # 发布 API（传入 Agent 类 + 初始化参数）的配置信息
     config = APIPublisherConfig(
@@ -53,8 +50,7 @@ if __name__ == '__main__':
 
     # 发布API
     app = publish_agent_api(
-        agent_cls=TeacherAgent,
-        agent_init_kwargs=agent_init_kwargs,
+        agent=agent,
         method="api_logic",
         config=config
     )

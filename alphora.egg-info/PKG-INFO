@@ -1,0 +1,30 @@
+Metadata-Version: 2.4
+Name: alphora
+Version: 1.0.1
+Summary: AI Agent Development Toolkit
+Author: Tian tian
+Author-email: tiantianit@chinamobile.com
+License: MIT
+Requires-Python: >=3.9
+Requires-Dist: setuptools==80.9.0
+Requires-Dist: dill==0.3.9
+Requires-Dist: fastapi==0.121.3
+Requires-Dist: Jinja2==3.1.6
+Requires-Dist: numpy==2.3.5
+Requires-Dist: openai==2.8.1
+Requires-Dist: openpyxl==3.1.5
+Requires-Dist: pyarrow==20.0.0
+Requires-Dist: pydantic==2.12.4
+Requires-Dist: pyodbc==5.1.0
+Requires-Dist: PyYAML==6.0.3
+Requires-Dist: Requests==2.32.5
+Requires-Dist: starlette==0.50.0
+Requires-Dist: tqdm==4.66.6
+Requires-Dist: typing_extensions==4.15.0
+Requires-Dist: uvicorn==0.38.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: license
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
