@@ -113,7 +113,6 @@ def _print_startup_info(
         "Agent基础信息": {
             "Agent类名": agent.__class__.__name__,
             "暴露方法": method,
-            "实例策略": "每次请求创建全新Agent实例",
             "LLM模型": llm_info
         },
         "API配置": {
@@ -139,9 +138,8 @@ def _print_startup_info(
     logger.info(f"✅ {agent.__class__.__name__} API服务启动成功")
     logger.info("=" * 90)
     for section, info in startup_info.items():
-        logger.info(f"\n【{section}】")
         for key, value in info.items():
-            logger.info(f"  {key}: {value}")
+            logger.info(f" -> {key}: {value}")
     logger.info("\n" + "=" * 90)
     logger.info(f"API访问地址: POST http://<host>:<port>{full_api_path}")
     logger.info("=" * 90)

@@ -1,10 +1,4 @@
-import inspect
-import uuid
-import time
-import asyncio
 from uuid import uuid4
-from datetime import datetime
-from fastapi import FastAPI, HTTPException
 from typing import TypeVar
 import logging
 
@@ -14,7 +8,6 @@ from alphora.prompter import BasePrompt
 from alphora.memory.base import BaseMemory
 from alphora.memory.memories.short_term_memory import ShortTermMemory
 from alphora.agent.stream import Stream
-from alphora.server.openai_request_body import OpenAIRequest
 from alphora.agent.agent_contract import *
 
 
@@ -339,14 +332,5 @@ class BaseAgent(object):
         # TODO
         pass
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "agent_id": self.agent_id,
-            "agent_type": self.agent_type,
-            "metadata": self.metadata.model_dump(),
-            "status": self._status.value,
-            "input_ports": [p.model_dump() for p in self.input_ports],
-            "output_ports": [p.model_dump() for p in self.output_ports],
-        }
 
 

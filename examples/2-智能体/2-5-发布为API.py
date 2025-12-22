@@ -17,14 +17,15 @@ class TeacherAgent(BaseAgent):
 
         history = self.memory.build_history()
 
-        prompt = self.create_prompt(prompt="你是一个大学数学老师，目前正在回复学生的问题，请你准确的回复学生的问题，\n\n历史对话: \n{{history}} \n\n学生说:{{query}}")
+        prompt = self.create_prompt(prompt="你是一个AI助手，目前正在回复用户的问题，请你准确的回复用户的问题，\n\n历史对话: \n{{history}} \n\n用户说:{{query}}")
 
         prompt.update_placeholder(history=history)
 
+        print(prompt.render())
         teacher_resp = await prompt.acall(query=query, is_stream=True, force_json=False)
 
-        self.memory.add_memory(role='学生', content=query)
-        self.memory.add_memory(role='老师', content=teacher_resp)
+        self.memory.add_memory(role='用户', content=query)
+        self.memory.add_memory(role='AI', content=teacher_resp)
 
         await self.stream.astop(stop_reason=f'{query}')
 
