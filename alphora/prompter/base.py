@@ -258,9 +258,19 @@ class BasePrompt:
 
         if is_stream:
             logger.warning(
-                "当前使用同步方法 `call`，无法向客户端发送流式响应；"
+                f"\n当前Prompter{self.__class__.__name__}使用同步方法 `call`，无法向客户端发送流式响应；"
                 "请改用异步方法 `acall`。"
-                " [Synchronous `call` does not support client streaming; use `acall` for API streaming.]"
+                " [Synchronous `call` does not support client streaming; use `acall` for API streaming.]\n"
+            )
+            logger.warning(
+                f"\n当前Prompter{self.__class__.__name__}使用同步方法 `call`，无法向客户端发送流式响应；"
+                "请改用异步方法 `acall`。"
+                " [Synchronous `call` does not support client streaming; use `acall` for API streaming.]\n"
+            )
+            logger.warning(
+                f"\n当前Prompter{self.__class__.__name__}使用同步方法 `call`，无法向客户端发送流式响应；"
+                "请改用异步方法 `acall`。"
+                " [Synchronous `call` does not support client streaming; use `acall` for API streaming.]\n"
             )
             try:
                 generator_with_content_type: BaseGenerator = self.llm.get_streaming_response(message=msg,
