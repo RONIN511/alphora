@@ -13,7 +13,7 @@ class CodeExecutionResult(TypedDict):
     stdout: str          # 标准输出（已截断）
     stderr: str          # 标准错误（已清理路径、已截断）
     exit_code: int       # 子进程退出码（0 表示成功）
-    message: str         # 人类可读摘要（可用于日志或 UI）
+    message: str
 
 
 def run_python_code(
@@ -28,9 +28,8 @@ def run_python_code(
         hide_temp_filename: bool = True,
 ) -> CodeExecutionResult:
     """
-    安全执行 Python 代码，返回结构化结果，便于程序化判断状态。
-
-    所有异常均被捕获，不会抛出任何异常。
+    执行 Python 代码，返回结构化结果
+    所有异常均被捕获，不会抛出任何异常
     """
     # 参数校验
     if not isinstance(code_str, str):
@@ -39,7 +38,7 @@ def run_python_code(
             "stdout": "",
             "stderr": "code_str must be a string",
             "exit_code": -1,
-            "message": "❌ Invalid input: code_str must be a string"
+            "message": " Invalid input: code_str must be a string"
         }
     if not code_str.strip():
         return {
@@ -47,7 +46,7 @@ def run_python_code(
             "stdout": "",
             "stderr": "",
             "exit_code": 0,
-            "message": "✅ Empty code executed successfully"
+            "message": " Empty code executed successfully"
         }
 
     try:
@@ -59,7 +58,7 @@ def run_python_code(
                 "stdout": "",
                 "stderr": err_msg,
                 "exit_code": -1,
-                "message": f"❌ {err_msg}"
+                "message": f" {err_msg}"
             }
     except Exception as e:
         return {
@@ -67,7 +66,7 @@ def run_python_code(
             "stdout": "",
             "stderr": str(e),
             "exit_code": -1,
-            "message": f"❌ Failed to resolve base_dir: {e}"
+            "message": f" Failed to resolve base_dir: {e}"
         }
 
     try:
@@ -78,7 +77,7 @@ def run_python_code(
             "stdout": "",
             "stderr": str(e),
             "exit_code": -1,
-            "message": f"❌ Failed to create base_dir: {e}"
+            "message": f" Failed to create base_dir: {e}"
         }
 
     env = os.environ.copy()
@@ -117,8 +116,8 @@ def run_python_code(
                 "status": "error",
                 "stdout": "",
                 "stderr": stderr_msg,
-                "exit_code": -2,  # 自定义超时码
-                "message": f"❌ {stderr_msg}"
+                "exit_code": -2,
+                "message": f"{stderr_msg}"
             }
 
         stdout = result.stdout or ""
@@ -141,9 +140,9 @@ def run_python_code(
             return {
                 "status": "success",
                 "stdout": stdout,
-                "stderr": stderr,  # 可能有警告信息
+                "stderr": stderr,
                 "exit_code": 0,
-                "message": "✅ Code executed successfully"
+                "message": "Code executed successfully"
             }
         else:
             # 错误情况：只在 stdout 非空时才包含它（可选，这里保留原始数据）
@@ -152,7 +151,7 @@ def run_python_code(
                 "stdout": stdout,
                 "stderr": stderr,
                 "exit_code": result.returncode,
-                "message": f"❌ Code failed with exit code {result.returncode}"
+                "message": f" Code failed with exit code {result.returncode}"
             }
 
     except Exception as e:
@@ -161,7 +160,7 @@ def run_python_code(
             "stdout": "",
             "stderr": str(e),
             "exit_code": -3,
-            "message": f"❌ Internal executor error: {e}"
+            "message": f" Internal executor error: {e}"
         }
 
     finally:

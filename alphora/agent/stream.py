@@ -3,11 +3,11 @@
 """
 
 from alphora.server.stream_responser import DataStreamer
-from typing import Optional, List, Any, Iterator
+from typing import Optional, List, Iterator
 import random
 import time
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.prompter.postprocess.base import BasePostProcessor
+from alphora.postprocess.base import BasePostProcessor
 
 import logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

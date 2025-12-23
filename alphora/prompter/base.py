@@ -8,13 +8,13 @@ from typing import Optional, List, Callable, Any
 from jinja2 import Environment, Template, BaseLoader, meta
 
 from alphora.models.message import Message
-from alphora.prompter.postprocess.base import BasePostProcessor
+from alphora.postprocess.base import BasePostProcessor
 from alphora.server.stream_responser import DataStreamer
 
 from json_repair import repair_json
 
 from alphora.models.llms.base import BaseLLM
-from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
+from alphora.models.llms.stream_helper import BaseGenerator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

@@ -52,6 +52,7 @@ class DataStreamer:
         self._closed = False
         self.model_name = model_name
         self.completion_id = f'cmpl-{str(uuid.uuid4())}'
+
         # 用于存储非流式响应的完整内容
         self.full_content = []
         self.finish_reason = None

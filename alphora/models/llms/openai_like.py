@@ -347,7 +347,6 @@ class OpenAILike(BaseLLM):
             f"temp={self.temperature}, max_tokens={self.max_tokens})"
         )
 
-    # Serialization support
     def __getstate__(self):
         state = self.__dict__.copy()
         state.pop('_sync_client', None)

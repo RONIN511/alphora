@@ -3,11 +3,10 @@ import sys
 from typing import Optional, Literal
 from pathlib import Path
 
-# 默认日志目录
 DEFAULT_LOG_DIR = Path("logs")
 DEFAULT_LOG_LEVEL = "INFO"
 
-# 确保日志目录存在
+
 DEFAULT_LOG_DIR.mkdir(exist_ok=True)
 
 

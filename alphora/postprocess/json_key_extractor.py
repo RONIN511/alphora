@@ -1,7 +1,7 @@
 import re
-from typing import Optional, Iterator, AsyncIterator, List
+from typing import Iterator, AsyncIterator
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.prompter.postprocess.base import BasePostProcessor
+from alphora.postprocess.base import BasePostProcessor
 
 
 class JsonKeyExtractorPP(BasePostProcessor):

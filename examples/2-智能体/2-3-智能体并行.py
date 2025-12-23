@@ -46,7 +46,7 @@ class GuideAgent(BaseAgent):
         await self.guide(query)
 
 
-if __name__ == '__main__':
-    import uvicorn
-    app = GuideAgent(llm=llm).to_api(method='api_logic')
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# if __name__ == '__main__':
+#     import uvicorn
+#     app = GuideAgent(llm=llm).to_api(method='api_logic')
+#     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,12 +1,9 @@
-from typing import Dict
 import json
 from alphora.agent.base import BaseAgent
 # from alphora.agent.models import AgentInput, AgentOutput
 from alphora.models.llms.openai_like import OpenAILike
-from alphora.server.stream_responser import DataStreamer
-import asyncio
 
-from alphora.prompter.postprocess.json_key_extractor import JsonKeyExtractorPP
+from alphora.postprocess.json_key_extractor import JsonKeyExtractorPP
 
 from alphora.server.openai_request_body import OpenAIRequest
 
@@ -47,6 +44,27 @@ class TeacherAgent(BaseAgent):
 
 
 if __name__ == '__main__':
+
     import uvicorn
-    app = TeacherAgent(llm=llm).to_api(method='api_logic')
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    from alphora.server.quick_api import publish_agent_api, APIPublisherConfig
+
+    agent = TeacherAgent(llm=llm)
+
+    # 发布 API（传入 Agent 类 + 初始化参数）的配置信息
+    config = APIPublisherConfig(
+        memory_ttl=7200,  # 2小时
+        max_memory_items=2000,
+        auto_clean_interval=300,  # 5分钟
+        api_title="{agent_name} API Service",
+        api_description="Auto-generated API for {agent_name} (method: {method_name})"
+    )
+
+    # 发布API
+    app = publish_agent_api(
+        agent=agent,
+        method="api_logic",
+        config=config
+    )
+
+    uvicorn.run(app, host="0.0.0.0", port=8001)
+

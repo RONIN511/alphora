@@ -101,7 +101,7 @@ def _print_startup_info(
         config: APIPublisherConfig,
         memory_pool: MemoryPool
 ) -> None:
-    # 获取LLM信息
+
     llm_instance = agent.llm
     llm_info = llm_instance.model_name if (llm_instance and hasattr(llm_instance, "model_name")) else "未配置"
 
@@ -135,7 +135,7 @@ def _print_startup_info(
     }
 
     logger.info("=" * 90)
-    logger.info(f"✅ {agent.__class__.__name__} API服务启动成功")
+    logger.info(f" {agent.__class__.__name__} API服务启动成功")
     logger.info("=" * 90)
     for section, info in startup_info.items():
         for key, value in info.items():

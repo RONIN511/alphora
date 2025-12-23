@@ -1,9 +1,9 @@
 """
 实现content_type的映射转换
 """
-from typing import Optional, Iterator, Dict
+from typing import Iterator, Dict
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.prompter.postprocess.base import BasePostProcessor
+from alphora.postprocess.base import BasePostProcessor
 
 
 class TypeMapperPP(BasePostProcessor):

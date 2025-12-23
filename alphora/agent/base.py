@@ -1,14 +1,13 @@
 from uuid import uuid4
-from typing import TypeVar
+from typing import TypeVar, List, Dict, Optional, Any, Type, Union
 import logging
-
 from alphora.models.llms.openai_like import OpenAILike
 from alphora.server.stream_responser import DataStreamer
 from alphora.prompter import BasePrompt
 from alphora.memory.base import BaseMemory
 from alphora.memory.memories.short_term_memory import ShortTermMemory
 from alphora.agent.stream import Stream
-from alphora.agent.agent_contract import *
+from pydantic import BaseModel
 
 
 logging.basicConfig(
@@ -68,11 +67,11 @@ class BaseAgent(object):
             **kwargs}
 
         # self.metadata = AgentMetadata(name=self.agent_type)
+        #
+        # self.input_ports: List[AgentInputPort] = []
+        # self.output_ports: List[AgentOutputPort] = []
 
-        self.input_ports: List[AgentInputPort] = []
-        self.output_ports: List[AgentOutputPort] = []
-
-        self._status: AgentStatus = AgentStatus.PENDING
+        # self._status: AgentStatus = AgentStatus.PENDING
         # self._outputs: Dict[str, AgentOutput] = {}
 
         self._log = []
@@ -166,7 +165,7 @@ class BaseAgent(object):
         """
         快速创建提示词模板
         Args:
-            template_path: 提示词路径（建议为相对路径）
+            template_path: 提示词路径
             template_desc: 提示词描述
             content_type: 当调用 acall 方法时，输出的流的 content_type
             prompt: Optional
@@ -198,135 +197,6 @@ class BaseAgent(object):
             error_msg = f'Failed to create prompt: {str(e)}'
             logging.error(error_msg)
             raise ValueError(error_msg)
-
-    # async def arun(self, inputs: Dict[str, AgentInput]) -> Dict[str, AgentOutput]:
-    #     """运行Agent（包含验证和异常处理）
-    #
-    #     Args:
-    #         inputs: 输入端口名称到输入数据的映射
-    #             例如: {"data": NodeInput(...)}
-    #             对于简单节点，通常只有一个输入端口
-    #
-    #     Returns:
-    #         输出端口名称到输出数据的映射
-    #         例如: {"output": NodeOutput(...)} 或
-    #               {"result": NodeOutput(...), "logs": NodeOutput(...)}
-    #     """
-    #     # 准备基础日志
-    #     execution_logs = []
-    #     base_metadata = {"node_id": self.node_id, "node_type": self.node_type}
-    #
-    #     try:
-    #         # 更新状态
-    #         self._status = AgentStatus.RUNNING
-    #
-    #         # 验证配置（延迟验证，允许运行时配置）
-    #         self._validate_config()
-    #         execution_logs.append(f"配置验证通过")
-    #
-    #         # 验证输入
-    #         self.validate_inputs(inputs)
-    #         execution_logs.append(f"输入验证通过")
-    #
-    #         # 执行节点逻辑
-    #         execution_logs.append(f"开始执行节点: {self.node_type}")
-    #         results = await self.aexecute(inputs)
-    #
-    #         # 验证输出
-    #         self.validate_outputs(results)
-    #         execution_logs.append(f"输出验证通过")
-    #
-    #         # 为每个输出端口添加日志和元数据
-    #         for port_name, output in results.items():
-    #             # 添加日志（根据输出状态决定）
-    #             if output.status == AgentStatus.FAILED:
-    #                 output.add_log(f"节点执行失败")
-    #             else:
-    #                 output.add_log(f"节点执行成功")
-    #                 # 只有当输出没有显式设置状态时，才设置为 SUCCESS
-    #                 if output.status not in [AgentStatus.SUCCESS, AgentStatus.FAILED]:
-    #                     output.status = AgentStatus.SUCCESS
-    #
-    #             # 合并执行日志
-    #             output.logs = execution_logs + output.logs
-    #
-    #             # 设置元数据
-    #             output.metadata.update(base_metadata)
-    #             output.metadata["port"] = port_name
-    #
-    #         # 更新节点状态（如果有任何输出失败，则节点失败）
-    #         has_failed = any(output.status == NodeStatus.FAILED for output in results.values())
-    #         self._status = NodeStatus.FAILED if has_failed else NodeStatus.SUCCESS
-    #         self._outputs = results
-    #
-    #         return results
-    #
-    #     except (NodeValidationError, Exception) as e:
-    #         # 创建错误输出
-    #         error_msg = (
-    #             f"输入验证失败: {str(e)}" if isinstance(e, NodeValidationError)
-    #             else f"节点执行失败: {type(e).__name__}: {str(e)}"
-    #         )
-    #
-    #         # 确定输出端口名称（用于错误情况）
-    #         if len(self.output_ports) == 1:
-    #             error_port_name = self.output_ports[0].name
-    #         elif len(self.output_ports) == 0:
-    #             error_port_name = "output"
-    #         else:
-    #             # 多个输出端口时，为每个端口创建错误输出
-    #             error_outputs = {}
-    #             for port in self.output_ports:
-    #                 error_output = NodeOutput(
-    #                     status=NodeStatus.FAILED,
-    #                     error=error_msg,
-    #                     metadata=base_metadata.copy()
-    #                 )
-    #                 error_output.logs = execution_logs.copy()
-    #                 error_output.metadata["port"] = port.name
-    #                 error_outputs[port.name] = error_output
-    #
-    #             self._status = NodeStatus.FAILED
-    #             self._outputs = error_outputs
-    #             return error_outputs
-    #
-    #         # 单个输出端口的错误处理
-    #         error_output = NodeOutput(
-    #             status=NodeStatus.FAILED,
-    #             error=error_msg,
-    #             metadata=base_metadata
-    #         )
-    #         error_output.logs = execution_logs
-    #         error_output.metadata["port"] = error_port_name
-    #
-    #         self._status = NodeStatus.FAILED
-    #         error_outputs = {error_port_name: error_output}
-    #         self._outputs = error_outputs
-    #         return error_outputs
-
-    # async def aexecute(self, inputs: AgentInput) -> AgentOutput:
-    #     """
-    #     由子类实现此方法
-    #     返回值必须是 {port_name: NodeOutput(...)} 的字典。
-    #     """
-    #     raise NotImplementedError(f"'{self.__class__.__name__}._execute' must be implemented")
-    #
-    # def execute(self, inputs: AgentInput) -> AgentOutput:
-    #     """
-    #     由子类实现此方法。
-    #     返回值必须是 {port_name: NodeOutput(...)} 的字典。
-    #     """
-    #     raise NotImplementedError(f"'{self.__class__.__name__}._execute' must be implemented")
-    #
-    # def get_output(self, port_name: Optional[str] = None) -> Optional[AgentOutput]:
-    #     if not self._outputs:
-    #         return None
-    #     if port_name is None:
-    #         if len(self._outputs) == 1:
-    #             return next(iter(self._outputs.values()))
-    #         else:
-    #             raise ValueError(f"多个输出端口，请指定名称。可用: {list(self._outputs.keys())}")
-    #     return self._outputs.get(port_name)
 
     def __or__(self, other):
         # TODO

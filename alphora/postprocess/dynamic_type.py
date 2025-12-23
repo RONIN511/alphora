@@ -1,8 +1,6 @@
-from abc import ABC, abstractmethod
 from typing import Optional, Iterator
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.prompter.postprocess.base import BasePostProcessor
-from typing import List, Tuple
+from alphora.postprocess.base import BasePostProcessor
 
 
 class DynamicTypePP(BasePostProcessor):

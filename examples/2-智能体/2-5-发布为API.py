@@ -12,7 +12,6 @@ llm = OpenAILike(api_key=llm_api_key, base_url=llm_base_url, model_name='qwen-pl
 
 
 class TeacherAgent(BaseAgent):
-
     async def teacher(self, query):
 
         history = self.memory.build_history()
@@ -56,4 +55,4 @@ if __name__ == '__main__':
         config=config
     )
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

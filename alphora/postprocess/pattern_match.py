@@ -1,8 +1,8 @@
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.prompter.postprocess.base import BasePostProcessor
+from alphora.postprocess.base import BasePostProcessor
 import random
 from enum import Enum, auto
-from typing import Iterator, Optional, List, Union, Callable, Literal
+from typing import Iterator, Optional, Literal
 
 
 class PatternMatcherPP(BasePostProcessor):
