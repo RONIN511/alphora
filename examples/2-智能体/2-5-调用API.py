@@ -3,7 +3,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="empty",
-    base_url="http://127.0.0.1:8001/alphadata"
+    base_url="http://127.0.0.1:8002/alphadata"
 )
 
 response = client.chat.completions.create(
@@ -11,7 +11,7 @@ response = client.chat.completions.create(
     messages=[
         {
             "role": "user",
-            "content": "史瓦西解是怎么得来的"
+            "content": "介绍一下故宫"
         }
     ],
     extra_body={

@@ -140,8 +140,7 @@ class BaseAgent(object):
 
         # 情况1：传入的是类
         if isinstance(agent_cls_or_instance, type) and issubclass(agent_cls_or_instance, BaseAgent):
-            derived_agent = agent_cls_or_instance(**override_params)
-            derived_agent.callback = self.callback
+            derived_agent = agent_cls_or_instance(**override_params, callback=self.callback)
             return derived_agent
 
         # 情况2：传入的是实例
