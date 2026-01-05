@@ -2,7 +2,7 @@ import logging
 import datetime
 from typing import Type, Dict, Any, Optional
 import asyncio
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from copy import copy
@@ -42,9 +42,12 @@ def create_api_router(
         full_api_path = f"{config.path[:-1]}/chat/completions"
 
     @router.post(full_api_path, response_description="OpenAI兼容格式的响应")
-    async def agent_api_endpoint(request: OpenAIRequest):
+    async def agent_api_endpoint(body_data: OpenAIRequest,
+                                 raw_request: Request):
         """每次请求创建全新Agent实例 + 关联会话记忆"""
         try:
+            body_data.set_headers(dict(raw_request.headers))
+
             # 确定记忆类
             memory_cls = ShortTermMemory
 
@@ -53,7 +56,7 @@ def create_api_router(
 
             # 获取/创建会话记忆
             session_id, session_memory = memory_pool.get_or_create(
-                session_id=request.session_id,
+                session_id=body_data.session_id,
                 memory_cls=memory_cls
             )
 
@@ -71,16 +74,16 @@ def create_api_router(
 
             # 执行Agent方法
             agent_method = getattr(new_agent, method_name)
-            _ = asyncio.create_task(agent_method(request))
+            _ = asyncio.create_task(agent_method(body_data))
 
             # 返回响应（流式/非流式）
-            if request.stream:
+            if body_data.stream:
                 return new_callback.start_streaming_openai()
             else:
                 return await new_callback.start_non_streaming_openai()
 
         except Exception as e:
-            session_id = request.session_id or "unknown"
+            session_id = body_data.session_id or "unknown"
             logger.error(f"处理请求异常 (session_id: {session_id})", exc_info=e)
             raise HTTPException(
                 status_code=500,
