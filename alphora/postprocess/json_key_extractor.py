@@ -1,5 +1,6 @@
 import json
-from typing import Iterator, AsyncIterator
+import re
+from typing import Iterator, AsyncIterator, List, Union, Any
 from json_repair import repair_json
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
 from alphora.postprocess.base import BasePostProcessor
@@ -8,147 +9,258 @@ from alphora.postprocess.base import BasePostProcessor
 class JsonKeyExtractorPP(BasePostProcessor):
     """
     流式 JSON key 提取后处理器
+
+    功能：
+    - 从流式 JSON 输出中提取指定 key 的值
+    - 支持嵌套路径: "data.product.desc"
+    - 支持数组索引: "items[0].name"
+    - 支持多 key 提取: ["title", "content"]
+
+    输出模式（output_mode）：
+    - "target_only"（默认）: 只输出提取的目标值，丢弃原始 JSON
+    - "raw_only": 只输出原始 JSON，不提取（相当于透传）
+    - "both": 流式输出目标值，响应返回原始 JSON
+
+    使用示例:
+        # 单个 key，只输出目标值
+        pp = JsonKeyExtractorPP(target_key="analysis")
+
+        # 嵌套 key
+        pp = JsonKeyExtractorPP(target_key="data.result.content")
+
+        # 多个 key（用分隔符连接）
+        pp = JsonKeyExtractorPP(target_keys=["title", "content"], separator="\\n---\\n")
+
+        # 流式显示目标值，但响应返回原始 JSON
+        pp = JsonKeyExtractorPP(target_key="content", output_mode="both")
     """
 
     def __init__(
             self,
-            target_key: str,
+            target_key: str = None,
+            target_keys: List[str] = None,
+            separator: str = "\n",
             content_type: str = "text",
-            stream_only_target: bool = True,
-            response_only_target: bool = False,
+            output_mode: str = "target_only",  # "target_only" | "raw_only" | "both"
     ):
-        self.target_key = target_key
+        """
+        Args:
+            target_key: 单个目标 key（支持嵌套路径如 "a.b.c" 或 "a[0].b"）
+            target_keys: 多个目标 key 列表
+            separator: 多 key 时的分隔符
+            content_type: 输出的 content_type
+            output_mode: 输出模式
+                - "target_only": 只输出目标值（流式+响应都是目标值）
+                - "raw_only": 只输出原始内容（透传）
+                - "both": 流式输出目标值，响应返回原始 JSON
+        """
+        if target_key is None and target_keys is None:
+            raise ValueError("必须指定 target_key 或 target_keys")
+        if target_key is not None and target_keys is not None:
+            raise ValueError("target_key 和 target_keys 不能同时指定")
+
+        if output_mode not in ("target_only", "raw_only", "both"):
+            raise ValueError("output_mode 必须是 'target_only', 'raw_only' 或 'both'")
+
+        self.target_keys = [target_key] if target_key else target_keys
+        self.separator = separator
         self.output_content_type = content_type
-        self.stream_only_target = stream_only_target
-        self.response_only_target = response_only_target
+        self.output_mode = output_mode
+        self.single_key_mode = target_key is not None
+
+    @staticmethod
+    def parse_key_path(path: str) -> List[Union[str, int]]:
+        """解析 key 路径: "data.items[0].name" -> ["data", "items", 0, "name"]"""
+        result = []
+        for match in re.finditer(r'([^.\[\]]+)|\[(\d+)\]', path):
+            if match.group(1):
+                result.append(match.group(1))
+            elif match.group(2):
+                result.append(int(match.group(2)))
+        return result
+
+    @staticmethod
+    def get_nested_value(data: Any, path_parts: List[Union[str, int]]) -> tuple:
+        """获取嵌套值，返回 (value, found)"""
+        current = data
+        for part in path_parts:
+            try:
+                if isinstance(part, int):
+                    if isinstance(current, list) and 0 <= part < len(current):
+                        current = current[part]
+                    else:
+                        return None, False
+                else:
+                    if isinstance(current, dict) and part in current:
+                        current = current[part]
+                    else:
+                        return None, False
+            except (KeyError, IndexError, TypeError):
+                return None, False
+        return current, True
 
     def process(self, generator: BaseGenerator[GeneratorOutput]) -> BaseGenerator[GeneratorOutput]:
+        extractor = self
+
         class JsonKeyExtractingGenerator(BaseGenerator[GeneratorOutput]):
-            def __init__(self, original_generator, target_key, out_type, stream_only_target, response_only_target):
+            def __init__(self, original_generator, out_type):
                 super().__init__(out_type)
                 self.original_generator = original_generator
-                self.target_key = target_key
-                self.stream_only_target = stream_only_target
-                self.response_only_target = response_only_target
+                self.raw_buffer = ""
+                self.last_emitted = ""  # 记录已输出的完整字符串
+                self.finished = False
 
-                # 状态变量优化
-                self.raw_buffer = ""          # 原始流式内容缓冲区
-                self.last_output_len = 0      # 记录上一次输出的目标值长度（核心：避免重复）
-                self.target_full_value = None # 完整的目标值
-                self.finished = False         # 是否提取完成
-
-            def _extract_target_value(self) -> tuple[any, bool, int]:
-                """
-                利用json_repair修复后解析JSON
-                返回：(当前完整目标值, 是否完整, 本次新增长度)
-                """
+            def _extract_values(self) -> dict:
+                """提取所有目标 key 的当前值"""
                 if not self.raw_buffer:
-                    return None, False, 0
+                    return {}
 
                 try:
-                    # 修复不完整JSON
-                    repaired_json = repair_json(self.raw_buffer)
-                    parsed = json.loads(repaired_json)
+                    repaired = repair_json(self.raw_buffer)
+                    parsed = json.loads(repaired)
 
-                    # 只处理字典类型
-                    if isinstance(parsed, dict) and self.target_key in parsed:
-                        current_val = parsed[self.target_key]
-                        val_str = str(current_val)
-                        val_len = len(val_str)
-
-                        # 判断是否完整（修复后的值在原始缓冲区中闭合）
-                        is_complete = (
-                                json.dumps(current_val).strip() in self.raw_buffer.strip() or
-                                # 兼容复杂值的判断：缓冲区包含结束标记
-                                (val_str and any(
-                                    end_char in self.raw_buffer
-                                    for end_char in ['"', '}', ']']
-                                ) and not self.raw_buffer.strip().endswith(val_str[-1]))
-                        )
-
-                        # 计算本次新增长度（核心：只输出新增部分）
-                        new_len = val_len - self.last_output_len if val_len > self.last_output_len else 0
-                        return current_val, is_complete, new_len
+                    result = {}
+                    for key_path in extractor.target_keys:
+                        path_parts = extractor.parse_key_path(key_path)
+                        value, found = extractor.get_nested_value(parsed, path_parts)
+                        if found and value is not None:
+                            result[key_path] = value
+                    return result
                 except Exception:
-                    pass
-                return None, False, 0
+                    return {}
+
+            def _build_output(self, values: dict) -> str:
+                """构建输出字符串"""
+                if extractor.single_key_mode:
+                    key = extractor.target_keys[0]
+                    val = values.get(key)
+                    return str(val) if val is not None else ""
+                else:
+                    parts = []
+                    for key in extractor.target_keys:
+                        val = values.get(key)
+                        if val is not None:
+                            parts.append(str(val))
+                    return extractor.separator.join(parts)
+
+            def _get_incremental(self, current: str) -> str:
+                """
+                安全计算增量：只有当新值是旧值的前缀扩展时才输出
+                """
+                if not current:
+                    return ""
+
+                if current.startswith(self.last_emitted):
+                    incremental = current[len(self.last_emitted):]
+                    if incremental:
+                        self.last_emitted = current
+                    return incremental
+
+                if not self.last_emitted:
+                    self.last_emitted = current
+                    return current
+
+                return ""
+
+            def _is_json_complete(self) -> bool:
+                """检查 JSON 是否完整"""
+                try:
+                    json.loads(self.raw_buffer)
+                    return True
+                except json.JSONDecodeError:
+                    return False
 
             async def agenerate(self) -> AsyncIterator[GeneratorOutput]:
-                """异步生成器（修复重复输出：只输出新增内容）"""
                 async for output in self.original_generator:
                     if self.finished:
-                        yield GeneratorOutput(content=output.content, content_type='[BOTH_IGNORE]')
                         continue
 
-                    # 1. 流式输出原始内容（按配置标记）
-                    stream_ctype = '[STREAM_IGNORE]' if self.stream_only_target else self.content_type
-                    yield GeneratorOutput(content=output.content, content_type=stream_ctype)
-
-                    # 2. 积累原始内容
+                    # 累积原始内容
                     self.raw_buffer += output.content
 
-                    # 3. 提取目标值（只取新增部分）
-                    current_val, is_complete, new_len = self._extract_target_value()
-                    if current_val is not None and new_len > 0:
-                        self.target_full_value = current_val
-                        # 只输出新增的部分（核心修复）
-                        new_content = str(current_val)[-new_len:]
+                    # 根据 output_mode 决定输出策略
+                    if extractor.output_mode == "raw_only":
+                        # 透传原始内容
                         yield GeneratorOutput(
-                            content=new_content,
-                            content_type=self.content_type
+                            content=output.content,
+                            content_type=extractor.output_content_type
                         )
-                        # 更新已输出长度
-                        self.last_output_len = len(str(current_val))
 
-                        # 4. 完整值已提取，终止流程
-                        if is_complete:
-                            self.finished = True
-                            break
+                    elif extractor.output_mode == "target_only":
+                        # 只输出目标值
+                        values = self._extract_values()
+                        if values:
+                            current_output = self._build_output(values)
+                            incremental = self._get_incremental(current_output)
+                            if incremental:
+                                yield GeneratorOutput(
+                                    content=incremental,
+                                    content_type=extractor.output_content_type
+                                )
 
-                # 最终兜底：确保完整值输出（仅未完成时）
-                if self.target_full_value and not self.finished:
-                    # 只输出未输出的剩余部分
-                    remaining = str(self.target_full_value)[self.last_output_len:]
-                    if remaining:
+                    elif extractor.output_mode == "both":
+                        # 原始内容：不流式输出，但加到响应
                         yield GeneratorOutput(
-                            content=remaining,
-                            content_type=self.content_type
+                            content=output.content,
+                            content_type='[STREAM_IGNORE]'
                         )
+
+                        # 目标值：流式输出，但不加到响应
+                        values = self._extract_values()
+                        if values:
+                            current_output = self._build_output(values)
+                            incremental = self._get_incremental(current_output)
+                            if incremental:
+                                yield GeneratorOutput(
+                                    content=incremental,
+                                    content_type='[RESPONSE_IGNORE]'
+                                )
+
+                    # 检查是否完成
+                    if self._is_json_complete():
+                        self.finished = True
 
             def generate(self) -> Iterator[GeneratorOutput]:
-                """同步生成器（同异步逻辑）"""
                 for output in self.original_generator:
                     if self.finished:
                         continue
 
                     self.raw_buffer += output.content
 
-                    current_val, is_complete, new_len = self._extract_target_value()
-                    if current_val is not None and new_len > 0:
-                        self.target_full_value = current_val
-                        new_content = str(current_val)[-new_len:]
+                    if extractor.output_mode == "raw_only":
                         yield GeneratorOutput(
-                            content=new_content,
-                            content_type=self.content_type
-                        )
-                        self.last_output_len = len(str(current_val))
-
-                        if is_complete:
-                            self.finished = True
-                            break
-
-                if self.target_full_value and not self.finished:
-                    remaining = str(self.target_full_value)[self.last_output_len:]
-                    if remaining:
-                        yield GeneratorOutput(
-                            content=remaining,
-                            content_type=self.content_type
+                            content=output.content,
+                            content_type=extractor.output_content_type
                         )
 
-        return JsonKeyExtractingGenerator(
-            generator,
-            self.target_key,
-            self.output_content_type,
-            self.stream_only_target,
-            self.response_only_target,
-        )
+                    elif extractor.output_mode == "target_only":
+                        values = self._extract_values()
+                        if values:
+                            current_output = self._build_output(values)
+                            incremental = self._get_incremental(current_output)
+                            if incremental:
+                                yield GeneratorOutput(
+                                    content=incremental,
+                                    content_type=extractor.output_content_type
+                                )
+
+                    elif extractor.output_mode == "both":
+                        yield GeneratorOutput(
+                            content=output.content,
+                            content_type='[STREAM_IGNORE]'
+                        )
+
+                        values = self._extract_values()
+                        if values:
+                            current_output = self._build_output(values)
+                            incremental = self._get_incremental(current_output)
+                            if incremental:
+                                yield GeneratorOutput(
+                                    content=incremental,
+                                    content_type='[RESPONSE_IGNORE]'
+                                )
+
+                    if self._is_json_complete():
+                        self.finished = True
+
+        return JsonKeyExtractingGenerator(generator, self.output_content_type)
