@@ -1,8 +1,17 @@
+<img src="asset/image/logo.png" alt="Alphora Logo" width="300" height="120">
+
 # Alphora: 一个轻量的智能体开发框架
 
-> 🌐 [English Version](README.en.md)
+<div align="center">
+  <br>
+  <br>
+  
+  [![Python Version](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
+  [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+  [![Latest Release](https://img.shields.io/badge/Release-v0.1.0-orange)](https://github.com/your-username/alphora/releases)
 
-Alphora 是一个轻量级的 AI 智能体开发工具包，提供了构建、部署和管理智能体所需的核心功能。它设计简洁、易于扩展，支持多种 LLM 模型，内置记忆管理、后处理、提示词模板等功能，帮助开发者快速构建复杂的智能体应用。
+  <a href="README.en.md">🌐 English Version</a>
+</div>
 
 ## 🌟 核心特性
 
@@ -16,22 +25,38 @@ Alphora 是一个轻量级的 AI 智能体开发工具包，提供了构建、�
 
 ## 📦 安装
 
-### 依赖要求
-
+### 环境要求
 - Python >= 3.9
+- pip >= 21.0
 
-最小依赖：
-- dill==0.3.9
-- fastapi==0.128.0
-- Jinja2==3.1.6
-- json_repair==0.52.1
-- openai==2.14.0
-- pandas==2.3.3
-- pydantic==2.12.5
-- Requests==2.32.5
-- setuptools==80.9.0
-- typing_extensions==4.15.0
-- uvicorn==0.40.0
+### 安装方式
+
+#### 使用 pip 安装（推荐）
+```bash
+pip install alphora
+```
+
+#### 从源码安装
+```bash
+git clone https://github.com/your-username/alphora.git
+cd alphora
+pip install -e .
+```
+
+### 核心依赖
+| 依赖包 | 版本要求 | 功能说明 |
+|--------|----------|----------|
+| dill | 0.3.9 | 对象序列化 |
+| fastapi | 0.128.0 | API 服务构建 |
+| Jinja2 | 3.1.6 | 提示词模板引擎 |
+| json_repair | 0.52.1 | JSON 数据修复 |
+| openai | 2.14.0 | LLM 模型调用 |
+| pandas | 2.3.3 | 数据处理 |
+| pydantic | 2.12.5 | 数据验证 |
+| Requests | 2.32.5 | HTTP 请求 |
+| uvicorn | 0.40.0 | ASGI 服务器 |
+
+
 
 ### 安装步骤
 
@@ -40,9 +65,6 @@ Alphora 是一个轻量级的 AI 智能体开发工具包，提供了构建、�
 git clone <repository-url>
 cd alphora
 pip install -e .
-
-# 或直接安装
-pip install alphora
 ```
 
 ## 🚀 快速开始

@@ -3,7 +3,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional, List, Callable, Any
+from typing import Optional, List, Callable, Any, Union
 
 from jinja2 import Environment, Template, BaseLoader, meta
 
@@ -21,10 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 class PrompterOutput(str):
-    def __new__(cls, content: str, reasoning: str = "", finish_reason: str = ""):
+    def __new__(cls, content: str, reasoning: str = "", finish_reason: str = "",
+                continuation_count: int = 0):
         instance = super().__new__(cls, content)
         instance._reasoning = reasoning
         instance._finish_reason = finish_reason
+        instance._continuation_count = continuation_count
         return instance
 
     @property
@@ -35,8 +37,14 @@ class PrompterOutput(str):
     def finish_reason(self):
         return self._finish_reason
 
+    @property
+    def continuation_count(self):
+        """返回续写次数（long_response 模式）"""
+        return self._continuation_count
+
     def __repr__(self):
-        return f'PrompterOutput({super().__repr__()}, reasoning={self._reasoning!r}, finish_reason={self._finish_reason!r})'
+        return (f'PrompterOutput({super().__repr__()}, reasoning={self._reasoning!r}, '
+                f'finish_reason={self._finish_reason!r}, continuations={self._continuation_count})')
 
 
 class BasePrompt:
@@ -222,7 +230,8 @@ class BasePrompt:
              postprocessor: 'BasePostProcessor' | Callable[[BaseGenerator], BaseGenerator] |
                             List['BasePostProcessor'] | List[Callable[[BaseGenerator], BaseGenerator]] | None = None,
              enable_thinking: bool = False,
-             force_json: bool = False
+             force_json: bool = False,
+             long_response: bool = False
              ) -> BaseGenerator | str | Any:
         """
         调用大模型对Prompt进行推理
@@ -235,6 +244,7 @@ class BasePrompt:
             postprocessor: 后处理器
             enable_thinking: 是否开启思考
             force_json: 强制Json
+            long_response: 是否启用长响应模式（自动续写）
         Returns:
         """
 
@@ -262,21 +272,26 @@ class BasePrompt:
                 "请改用异步方法 `acall`。"
                 " [Synchronous `call` does not support client streaming; use `acall` for API streaming.]\n"
             )
-            logger.warning(
-                f"\n当前Prompter{self.__class__.__name__}使用同步方法 `call`，无法向客户端发送流式响应；"
-                "请改用异步方法 `acall`。"
-                " [Synchronous `call` does not support client streaming; use `acall` for API streaming.]\n"
-            )
-            logger.warning(
-                f"\n当前Prompter{self.__class__.__name__}使用同步方法 `call`，无法向客户端发送流式响应；"
-                "请改用异步方法 `acall`。"
-                " [Synchronous `call` does not support client streaming; use `acall` for API streaming.]\n"
-            )
+
             try:
-                generator_with_content_type: BaseGenerator = self.llm.get_streaming_response(message=msg,
-                                                                                             content_type=content_type,
-                                                                                             enable_thinking=enable_thinking,
-                                                                                             system_prompt=system_prompt)
+                # 根据是否启用长响应模式选择不同的生成器
+                if long_response:
+                    from alphora.prompter.long_response import LongResponseGenerator
+
+                    generator_with_content_type = LongResponseGenerator(
+                        llm=self.llm,
+                        original_message=msg,
+                        content_type=content_type or self.content_type,
+                        system_prompt=system_prompt,
+                        enable_thinking=enable_thinking
+                    )
+                else:
+                    generator_with_content_type: BaseGenerator = self.llm.get_streaming_response(
+                        message=msg,
+                        content_type=content_type,
+                        enable_thinking=enable_thinking,
+                        system_prompt=system_prompt
+                    )
 
                 # 后处理咯
                 if postprocessor:
@@ -298,6 +313,7 @@ class BasePrompt:
                 # 如果llm具备callback，那么返回一个str
                 output_str = ''
                 reasoning_content = ''
+                continuation_count = 0
 
                 for ck in generator_with_content_type:
 
@@ -336,13 +352,19 @@ class BasePrompt:
 
                 finish_reason = generator_with_content_type.finish_reason
 
+                # 获取续写次数（如果是长响应模式）
+                if long_response and hasattr(generator_with_content_type, 'continuation_count'):
+                    continuation_count = generator_with_content_type.continuation_count
+
                 if self.verbose:
                     logger.info(msg=f'\n\nInstruction:\n{instruction}\n\n\nResponse:\n{output_str}')
 
                 if enable_thinking:
-                    return PrompterOutput(content=output_str, reasoning=reasoning_content, finish_reason=finish_reason)
+                    return PrompterOutput(content=output_str, reasoning=reasoning_content,
+                                          finish_reason=finish_reason, continuation_count=continuation_count)
                 else:
-                    return PrompterOutput(content=output_str, reasoning="", finish_reason=finish_reason)
+                    return PrompterOutput(content=output_str, reasoning="",
+                                          finish_reason=finish_reason, continuation_count=continuation_count)
 
             except Exception as e:
                 raise RuntimeError(f"流式响应时发生错误: {e}")
@@ -370,7 +392,8 @@ class BasePrompt:
                                    List['BasePostProcessor'] | List[
                                        Callable[[BaseGenerator], BaseGenerator]] | None = None,
                     enable_thinking: bool = False,
-                    force_json: bool = False
+                    force_json: bool = False,
+                    long_response: bool = False
                     ) -> BaseGenerator | str | Any:
         """
         调用大模型对Prompt进行推理
@@ -383,6 +406,7 @@ class BasePrompt:
             postprocessor: 后处理器
             enable_thinking: 是否开启思考
             force_json: 强制Json
+            long_response: 是否启用长响应模式（自动续写）
         Returns:
         """
 
@@ -409,11 +433,24 @@ class BasePrompt:
 
         if is_stream:
             try:
+                # 根据是否启用长响应模式选择不同的生成器
+                if long_response:
+                    from alphora.prompter.long_response import LongResponseGenerator
 
-                generator_with_content_type: BaseGenerator = await self.llm.aget_streaming_response(message=msg,
-                                                                                                    content_type=content_type,
-                                                                                                    enable_thinking=enable_thinking,
-                                                                                                    system_prompt=system_prompt)
+                    generator_with_content_type = LongResponseGenerator(
+                        llm=self.llm,
+                        original_message=msg,
+                        content_type=content_type,
+                        system_prompt=system_prompt,
+                        enable_thinking=enable_thinking
+                    )
+                else:
+                    generator_with_content_type: BaseGenerator = await self.llm.aget_streaming_response(
+                        message=msg,
+                        content_type=content_type,
+                        enable_thinking=enable_thinking,
+                        system_prompt=system_prompt
+                    )
 
                 # 后处理
                 if postprocessor:
@@ -435,6 +472,7 @@ class BasePrompt:
                 # 如果llm具备callback，那么返回一个str
                 output_str = ''
                 reasoning_content = ''
+                continuation_count = 0
 
                 async for ck in generator_with_content_type:
 
@@ -500,16 +538,23 @@ class BasePrompt:
 
                 finish_reason = generator_with_content_type.finish_reason
 
+                # 获取续写次数（如果是长响应模式）
+                if long_response and hasattr(generator_with_content_type, 'continuation_count'):
+                    continuation_count = generator_with_content_type.continuation_count
+
                 if self.verbose:
                     logger.info(msg=f'\n\nInstruction:\n{instruction}\n\n\nResponse:\n{output_str}')
 
                 if enable_thinking:
-                    return PrompterOutput(content=output_str, reasoning=reasoning_content, finish_reason=finish_reason)
+                    return PrompterOutput(content=output_str, reasoning=reasoning_content,
+                                          finish_reason=finish_reason, continuation_count=continuation_count)
                 else:
-                    return PrompterOutput(content=output_str, reasoning="", finish_reason=finish_reason)
+                    return PrompterOutput(content=output_str, reasoning="",
+                                          finish_reason=finish_reason, continuation_count=continuation_count)
 
             except Exception as e:
-                await self.callback.stop(stop_reason=str(e))
+                if self.callback:
+                    await self.callback.stop(stop_reason=str(e))
                 raise RuntimeError(f"流式响应时发生错误: {e}")
 
         else:
