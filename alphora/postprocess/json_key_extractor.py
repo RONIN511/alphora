@@ -3,7 +3,7 @@ import re
 from typing import Iterator, AsyncIterator, List, Union, Any
 from json_repair import repair_json
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.postprocess.base import BasePostProcessor
+from alphora.postprocess.base_pp import BasePostProcessor
 
 
 class JsonKeyExtractorPP(BasePostProcessor):
@@ -41,7 +41,7 @@ class JsonKeyExtractorPP(BasePostProcessor):
             target_keys: List[str] = None,
             separator: str = "\n",
             content_type: str = "text",
-            output_mode: str = "target_only",  # "target_only" | "raw_only" | "both"
+            output_mode: str = "both",  # "target_only" | "raw_only" | "both"
     ):
         """
         Args:

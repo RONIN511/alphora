@@ -1,4 +1,4 @@
-from alphora.prompter.base import BasePrompt, PrompterOutput
+from alphora.prompter.base_prompter import BasePrompt, PrompterOutput
 from alphora.utils.parallel import parallel_run, parallel_run_heterogeneous
 from typing import List, Iterable
 import asyncio

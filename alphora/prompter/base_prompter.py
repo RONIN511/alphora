@@ -9,7 +9,7 @@ from typing import Optional, List, Callable, Any, Union, Dict, Literal, TYPE_CHE
 from jinja2 import Environment, Template, BaseLoader, meta
 
 from alphora.models.message import Message
-from alphora.postprocess.base import BasePostProcessor
+from alphora.postprocess.base_pp import BasePostProcessor
 from alphora.server.stream_responser import DataStreamer
 
 from json_repair import repair_json
@@ -20,12 +20,14 @@ from alphora.models.llms.stream_helper import BaseGenerator
 if TYPE_CHECKING:
     from alphora.memory import MemoryManager
 
+from alphora.debugger import tracer
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
 class PrompterOutput(str):
-    """原有类，完全不变"""
+
     def __new__(cls, content: str, reasoning: str = "", finish_reason: str = "",
                 continuation_count: int = 0):
         instance = super().__new__(cls, content)
@@ -136,7 +138,8 @@ class BasePrompt:
 
         # 如果启用记忆但没有传入 memory，自动创建内存存储的
         if self.enable_memory and self._memory is None:
-            raise RuntimeError("启用记忆但没有传入 memory")
+            from alphora.memory import MemoryManager
+            self._memory = MemoryManager()
 
     def _validate_mode(self):
         """验证模式互斥性"""
@@ -207,8 +210,6 @@ class BasePrompt:
                 if var not in self.placeholders:
                     self.placeholders.append(var)
 
-    # ==================== 新增：system_prompt 渲染 ====================
-
     def _render_system_prompt(self) -> Optional[str]:
         """渲染 system_prompt（应用占位符）"""
         if not self._system_prompt_template:
@@ -219,8 +220,6 @@ class BasePrompt:
         except Exception as e:
             logger.error(f"渲染 system_prompt 错误: {e}")
             return self._system_prompt_raw
-
-    # ==================== 新增：Memory 相关方法 ====================
 
     @property
     def memory(self) -> Optional['MemoryManager']:
@@ -247,12 +246,12 @@ class BasePrompt:
     def get_memory(self) -> Optional['MemoryManager']:
         """
         获取记忆管理器实例
-        
+
         可用于：
         - 共享给其他 Prompt
         - 手动操作记忆（添加、搜索等）
         - 获取历史记录
-        
+
         Returns:
             MemoryManager 实例
         """
@@ -265,11 +264,11 @@ class BasePrompt:
     ) -> 'BasePrompt':
         """
         设置记忆管理器
-        
+
         Args:
             memory: MemoryManager 实例
             memory_id: 记忆ID（可选）
-            
+
         Returns:
             self（支持链式调用）
         """
@@ -282,7 +281,7 @@ class BasePrompt:
     def clear_memory(self) -> 'BasePrompt':
         """
         清空当前 memory_id 的记忆
-        
+
         Returns:
             self（支持链式调用）
         """
@@ -297,13 +296,13 @@ class BasePrompt:
     ) -> Union[str, List[Dict[str, str]]]:
         """
         获取对话历史
-        
+
         Args:
             format: 输出格式
                 - "messages": List[Dict]，可直接用于 LLM
                 - "text": 字符串格式
             max_round: 最大轮数（不传则使用 max_history_rounds）
-            
+
         Returns:
             对话历史
         """
@@ -372,8 +371,6 @@ class BasePrompt:
         if self.enable_memory and self._memory and self.auto_save_memory:
             self._memory.add_memory("user", query, memory_id=self._memory_id)
             self._memory.add_memory("assistant", response, memory_id=self._memory_id)
-
-    # ==================== 原有方法，完全不变 ====================
 
     @staticmethod
     def _get_base_path():
@@ -488,12 +485,10 @@ class BasePrompt:
 
         self.placeholders = self._get_template_variables()  # 更新占位符列表
 
-        # ========== 新增：标记为传统模式 ==========
         self._use_legacy_mode = True
         # 重新验证模式
         if self.enable_memory or self._system_prompt_raw:
             self._validate_mode()
-        # ========== 新增结束 ==========
 
     def add_llm(self, model=None) -> "BasePrompt":
         """
@@ -509,8 +504,6 @@ class BasePrompt:
         self.llm = model
         return self
 
-    # ==================== call 方法 - 支持新模式 ====================
-
     def call(self,
              query: str = None,
              is_stream: bool = False,
@@ -523,9 +516,7 @@ class BasePrompt:
              force_json: bool = False,
              long_response: bool = False,
              system_prompt: str = None,
-             # ========== 新增参数 ==========
              save_to_memory: Optional[bool] = None,
-             # ========== 新增结束 ==========
              ) -> BaseGenerator | str | Any:
         """
         调用大模型对Prompt进行推理
@@ -547,16 +538,14 @@ class BasePrompt:
         if not self.llm:
             raise ValueError("LLM not initialized")
 
-        # ========== 新增：判断使用哪种模式 ==========
         use_new_mode = self._use_new_mode and not multimodal_message  # 新模式，但多模态暂不支持
 
         if use_new_mode:
-            # 新模式：构建规范的 messages 列表
+            # 构建规范的 messages 列表
             messages = self._build_messages_for_new_mode(query=query, force_json=force_json)
             msg = None  # 不使用 Message 对象
             instruction = None
         else:
-            # 传统模式：原有逻辑
             messages = None
             system_prompt = system_prompt
             if force_json:
@@ -570,7 +559,6 @@ class BasePrompt:
                 instruction = instruction.render(query=query)
 
             msg.add_text(content=instruction)
-        # ========== 新增结束 ==========
 
         if is_stream:
             logger.warning(
@@ -592,7 +580,6 @@ class BasePrompt:
                         enable_thinking=enable_thinking
                     )
                 else:
-                    # ========== 修改：根据模式选择调用方式 ==========
                     if use_new_mode:
                         generator_with_content_type: BaseGenerator = self.llm.get_streaming_response(
                             message=messages,
@@ -606,7 +593,6 @@ class BasePrompt:
                             enable_thinking=enable_thinking,
                             system_prompt=system_prompt
                         )
-                    # ========== 修改结束 ==========
 
                 # 后处理咯
                 if postprocessor:
@@ -663,7 +649,7 @@ class BasePrompt:
                     try:
                         output_str = repair_json(json_str=output_str)
                     except Exception as e:
-                        raise Exception(e)
+                        logger.warning(f"无法将输出解析为Json，可能的原因：1、使用了 JsonKeyExtractorPP 并且output_mode='target_only'，如是，请将output_mode设置为'both' 2、该提示词下无法生成Json格式")
 
                 finish_reason = generator_with_content_type.finish_reason
 
@@ -677,11 +663,9 @@ class BasePrompt:
                     else:
                         logger.info(msg=f'\n\nInstruction:\n{instruction}\n\n\nResponse:\n{output_str}')
 
-                # ========== 新增：保存到记忆 ==========
                 should_save = save_to_memory if save_to_memory is not None else self.auto_save_memory
                 if should_save and use_new_mode:
                     self._save_to_memory(query, output_str)
-                # ========== 新增结束 ==========
 
                 if enable_thinking:
                     return PrompterOutput(content=output_str, reasoning=reasoning_content,
@@ -699,25 +683,19 @@ class BasePrompt:
             """
 
             try:
-                # ========== 修改：根据模式选择调用方式 ==========
                 if use_new_mode:
                     resp = self.llm.invoke(message=messages)
                 else:
                     resp = self.llm.invoke(message=msg)
-                # ========== 修改结束 ==========
 
-                # ========== 新增：保存到记忆 ==========
                 should_save = save_to_memory if save_to_memory is not None else self.auto_save_memory
                 if should_save and use_new_mode:
                     self._save_to_memory(query, resp)
-                # ========== 新增结束 ==========
 
                 return PrompterOutput(content=resp, reasoning="", finish_reason="")
 
             except Exception as e:
                 raise RuntimeError(f"非流式响应时发生错误: {e}")
-
-    # ==================== acall 方法 - 支持新模式 ====================
 
     async def acall(self,
                     query: str = None,
@@ -732,9 +710,7 @@ class BasePrompt:
                     force_json: bool = False,
                     long_response: bool = False,
                     system_prompt: str = None,
-                    # ========== 新增参数 ==========
                     save_to_memory: Optional[bool] = None,
-                    # ========== 新增结束 ==========
                     ) -> BaseGenerator | str | Any:
         """
         调用大模型对Prompt进行推理
@@ -759,11 +735,17 @@ class BasePrompt:
         if not content_type:
             content_type = self.content_type or 'char'
 
-        # ========== 新增：判断使用哪种模式 ==========
+        _debug_agent_id = getattr(self, '_debug_agent_id', 'unknown')
+
+        _debug_call_id = tracer.track_llm_start(
+            agent_id=_debug_agent_id,
+            model_name=getattr(self.llm, 'model_name', 'unknown') if self.llm else 'unknown',
+            input_text=str(query)
+        )
+
         use_new_mode = self._use_new_mode and not multimodal_message
 
         if use_new_mode:
-            # 新模式
             messages = self._build_messages_for_new_mode(query=query, force_json=force_json)
             msg = None
             instruction = None
@@ -771,6 +753,7 @@ class BasePrompt:
             # 传统模式
             messages = None
             system_prompt = system_prompt
+
             if force_json:
                 system_prompt = "必须输出Json格式"
 
@@ -782,7 +765,6 @@ class BasePrompt:
                 instruction = instruction.render(query=query)
 
             msg.add_text(content=instruction)
-        # ========== 新增结束 ==========
 
         if is_stream:
             try:
@@ -798,7 +780,6 @@ class BasePrompt:
                         enable_thinking=enable_thinking
                     )
                 else:
-                    # ========== 修改：根据模式选择调用方式 ==========
                     if use_new_mode:
                         generator_with_content_type: BaseGenerator = await self.llm.aget_streaming_response(
                             message=messages,
@@ -812,7 +793,6 @@ class BasePrompt:
                             enable_thinking=enable_thinking,
                             system_prompt=system_prompt
                         )
-                    # ========== 修改结束 ==========
 
                 # 后处理
                 if postprocessor:
@@ -896,7 +876,9 @@ class BasePrompt:
                     try:
                         output_str = json.dumps(json.loads(repair_json(json_str=output_str)), ensure_ascii=False)
                     except Exception as e:
-                        raise RuntimeError(f"该提示词下无法将输出解析为Json，请修改提示词或将 `force_json` 设为 False 再尝试")
+                        logger.warning(f"无法将输出解析为Json，可能的原因：1、使用了 JsonKeyExtractorPP 并且output_mode='target_only'，如是，请将output_mode设置为'both' 2、该提示词下无法生成Json格式")
+                        pass
+                        # raise RuntimeError(f"该提示词下无法将输出解析为Json，请修改提示词或将 `force_json` 设为 False 再尝试")
 
                 finish_reason = generator_with_content_type.finish_reason
 
@@ -910,11 +892,15 @@ class BasePrompt:
                     else:
                         logger.info(msg=f'\n\nInstruction:\n{instruction}\n\n\nResponse:\n{output_str}')
 
-                # ========== 新增：保存到记忆 ==========
                 should_save = save_to_memory if save_to_memory is not None else self.auto_save_memory
                 if should_save and use_new_mode:
                     self._save_to_memory(query, output_str)
-                # ========== 新增结束 ==========
+
+                tracer.track_llm_end(
+                    call_id=_debug_call_id,
+                    output_text=output_str,
+                    reasoning_text=reasoning_content
+                )
 
                 if enable_thinking:
                     return PrompterOutput(content=output_str, reasoning=reasoning_content,
@@ -924,6 +910,7 @@ class BasePrompt:
                                           finish_reason=finish_reason, continuation_count=continuation_count)
 
             except Exception as e:
+                tracer.track_llm_error(_debug_call_id, str(e))
                 if self.callback:
                     await self.callback.stop(stop_reason=str(e))
                 raise RuntimeError(f"流式响应时发生错误: {e}")
@@ -934,25 +921,24 @@ class BasePrompt:
             """
 
             try:
-                # ========== 修改：根据模式选择调用方式 ==========
                 if use_new_mode:
                     resp = await self.llm.ainvoke(message=messages)
                 else:
                     resp = await self.llm.ainvoke(message=msg)
-                # ========== 修改结束 ==========
 
-                # ========== 新增：保存到记忆 ==========
                 should_save = save_to_memory if save_to_memory is not None else self.auto_save_memory
                 if should_save and use_new_mode:
                     self._save_to_memory(query, resp)
-                # ========== 新增结束 ==========
+
+                tracer.track_llm_end(
+                    call_id=_debug_call_id,
+                    output_text=resp
+                )
 
                 return PrompterOutput(content=resp, reasoning="", finish_reason="")
 
             except Exception as e:
                 raise RuntimeError(f"非流式响应时发生错误: {e}")
-
-    # ==================== 原有方法，完全不变 ====================
 
     def update_placeholder(self, **kwargs):
         """更新占位符值（同时支持 prompt 和 system_prompt 中的占位符）"""
@@ -982,13 +968,11 @@ class BasePrompt:
 
     def __str__(self) -> str:
         try:
-            # ========== 新增：新模式下显示 system_prompt ==========
             if self._use_new_mode:
                 rendered = self._render_system_prompt()
                 if rendered:
                     return f"[新模式] system_prompt: {rendered}"
                 return "BasePrompt - system_prompt 未渲染或内容为空"
-            # ========== 新增结束 ==========
 
             rendered = self.render()
             if not rendered.strip():

@@ -1,5 +1,5 @@
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.postprocess.base import BasePostProcessor
+from alphora.postprocess.base_pp import BasePostProcessor
 import random
 from enum import Enum, auto
 from typing import Iterator, Optional, Literal

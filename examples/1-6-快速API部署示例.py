@@ -7,7 +7,7 @@ from alphora.server.openai_request_body import OpenAIRequest
 from alphora.postprocess.json_key_extractor import JsonKeyExtractorPP
 from alphora.postprocess.replace import ReplacePP
 
-llm_api_key: str = 'sk-xxx'
+llm_api_key: str = "sk-68ac5f5ccf3540ba834deeeaecb48987"
 llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 llm1 = OpenAILike(api_key=llm_api_key, base_url=llm_base_url, model_name='qwen-plus', max_tokens=8000)
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     import uvicorn
     from alphora.server.quick_api import publish_agent_api, APIPublisherConfig
 
-    agent = MyAgent(llm=llm)
+    agent = MyAgent(llm=llm, debugger=True)
 
     # 发布 API（传入 Agent 类 + 初始化参数）的配置信息
     config = APIPublisherConfig(

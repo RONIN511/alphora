@@ -11,8 +11,7 @@ from alphora.agent.base_agent import BaseAgent
 from alphora.server.openai_request_body import OpenAIRequest
 from alphora.server.stream_responser import DataStreamer
 from alphora.agent.stream import Stream
-from alphora.memory.base import BaseMemory
-from alphora.memory.memories.short_term_memory import ShortTermMemory
+from alphora.memory import MemoryManager
 
 from .memory_pool import MemoryPool
 from .config import APIPublisherConfig
@@ -49,9 +48,9 @@ def create_api_router(
             body_data.set_headers(dict(raw_request.headers))
 
             # 确定记忆类
-            memory_cls = ShortTermMemory
+            memory_cls = MemoryManager
 
-            if hasattr(agent, 'default_memory_cls') and issubclass(agent.default_memory_cls, BaseMemory):
+            if hasattr(agent, 'default_memory_cls') and issubclass(agent.default_memory_cls, MemoryManager):
                 memory_cls = agent.default_memory_cls
 
             # 获取/创建会话记忆

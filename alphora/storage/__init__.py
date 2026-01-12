@@ -35,7 +35,7 @@ with JSONStorage("./data/storage.json") as storage:
 ```
 """
 
-from alphora.storage.base import (
+from alphora.storage.base_storage import (
     StorageBackend,
     StorageConfig,
     StorageType,

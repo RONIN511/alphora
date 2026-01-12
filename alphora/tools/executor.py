@@ -12,7 +12,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional, Union
 from dataclasses import dataclass
 
-from alphora.tools.base import Tool, ToolResult, ToolRegistry
+from alphora.tools.base_tools import Tool, ToolResult, ToolRegistry
 
 logger = logging.getLogger(__name__)
 

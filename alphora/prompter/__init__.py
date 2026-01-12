@@ -1,2 +1,2 @@
-from alphora.prompter.base import BasePrompt
+from alphora.prompter.base_prompter import BasePrompt
 

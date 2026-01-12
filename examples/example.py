@@ -28,8 +28,7 @@ class MultiRoleBot(BaseAgent):
     async def as_teacher(self, topic: str, session_id: str):
         prompt = self.create_prompt(
             system_prompt="你是老师",
-            enable_memory=True,
-            memory_id=session_id  # 同一个 session，共享历史
+            enable_memory=True
         )
         return await prompt.acall(query=f"解释刚才翻译的内容", is_stream=True)
 

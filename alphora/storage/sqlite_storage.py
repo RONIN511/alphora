@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from contextlib import contextmanager
 import fnmatch
 
-from alphora.storage.base import StorageBackend, StorageConfig
+from alphora.storage.base_storage import StorageBackend, StorageConfig
 from alphora.storage.serializers import (
     JSONSerializer,
     ExtendedJSONEncoder,

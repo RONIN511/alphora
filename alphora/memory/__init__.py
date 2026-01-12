@@ -23,7 +23,7 @@ memory.add_memory(
 )
 
 memory.add_memory(
-    role="assistant", 
+    role="assistant",
     content="好的，我来帮你学习Python。你有什么基础吗？",
     memory_id="chat_001"
 )
@@ -101,21 +101,19 @@ from alphora.memory.reflection import (
 
 from alphora.memory.manager import (
     MemoryManager,
-    BaseMemory  # 兼容旧接口
 )
 
 
 __all__ = [
     # 核心类
     "MemoryManager",
-    "BaseMemory",  # 兼容
     "MemoryUnit",
     "MemoryType",
-    
+
     # 工厂函数
     "create_memory",
     "extract_keywords",
-    
+
     # 衰减策略
     "DecayStrategy",
     "LinearDecay",
@@ -128,7 +126,7 @@ __all__ = [
     "NoDecay",
     "get_decay_strategy",
     "list_decay_strategies",
-    
+
     # 检索策略
     "RetrievalStrategy",
     "RetrievalResult",
@@ -141,7 +139,7 @@ __all__ = [
     "SemanticRetrieval",
     "get_retrieval_strategy",
     "search_memories",
-    
+
     # 反思
     "MemoryReflector",
     "AutoReflector",

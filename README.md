@@ -447,12 +447,14 @@ agent = BaseAgent(llm=llm, memory=MyCustomMemory())
 继承`BasePostprocess`类：
 
 ```python
-from alphora.postprocess.base import BasePostprocess
+from alphora.postprocess.base_pp import BasePostprocess
+
 
 class MyCustomPostprocess(BasePostprocess):
-    async def process(self, content, **kwargs):
-        # 实现自定义后处理逻辑
-        return processed_content
+  async def process(self, content, **kwargs):
+    # 实现自定义后处理逻辑
+    return processed_content
+
 
 # 使用自定义后处理器
 response = await prompt.acall(query=query, postprocessor=MyCustomPostprocess())

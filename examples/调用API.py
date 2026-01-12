@@ -11,7 +11,7 @@ response = client.chat.completions.create(
     messages=[
         {
             "role": "user",
-            "content": "看下"
+            "content": "想去故宫"
         }
     ],
     extra_body={

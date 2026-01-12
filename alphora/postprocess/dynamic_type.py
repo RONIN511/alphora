@@ -1,6 +1,6 @@
 from typing import Optional, Iterator
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.postprocess.base import BasePostProcessor
+from alphora.postprocess.base_pp import BasePostProcessor
 
 
 class DynamicTypePP(BasePostProcessor):

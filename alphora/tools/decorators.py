@@ -32,7 +32,7 @@ import re
 from typing import Callable, Dict, Optional, TypeVar, Union
 from functools import wraps
 
-from alphora.tools.base import FunctionTool, Tool, ToolRegistry, get_global_registry
+from alphora.tools.base_tools import FunctionTool, Tool, ToolRegistry, get_global_registry
 
 F = TypeVar('F', bound=Callable)
 

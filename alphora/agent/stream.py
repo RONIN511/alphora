@@ -7,7 +7,7 @@ from typing import Optional, List, Iterator
 import random
 import time
 from alphora.models.llms.stream_helper import BaseGenerator, GeneratorOutput
-from alphora.postprocess.base import BasePostProcessor
+from alphora.postprocess.base_pp import BasePostProcessor
 
 import logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

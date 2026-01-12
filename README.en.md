@@ -412,12 +412,14 @@ agent = BaseAgent(llm=llm, memory=MyCustomMemory())
 Inherit from the `BasePostprocess` class and implement the `process` method:
 
 ```python
-from alphora.postprocess.base import BasePostprocess
+from alphora.postprocess.base_pp import BasePostprocess
+
 
 class MyCustomPostprocess(BasePostprocess):
     async def process(self, content, **kwargs):
         # Implement custom post-processing logic
         return processed_content
+
 
 # Use custom post-processor
 custom_pp = MyCustomPostprocess()
