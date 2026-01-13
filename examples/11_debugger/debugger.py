@@ -6,17 +6,21 @@ import asyncio
 import os
 from alphora.agent import BaseAgent
 from alphora.debugger import tracer
+from alphora.postprocess.json_key_extractor import JsonKeyExtractorPP
 
 
 class TransAgent(BaseAgent):
     async def run(self, query: str):
+
+        json_pp = JsonKeyExtractorPP(target_key='translate')
+
         prompt = self.create_prompt(
-            system_prompt="你是一个翻译专家，负责把用户问题翻译为{{target_lang}}"
+            system_prompt="你是一个翻译专家，负责把用户问题翻译为{{target_lang}}, 并用Json（origin, translate）"
         )
 
         prompt.update_placeholder(target_lang="en")
 
-        return await prompt.acall(query=query, is_stream=True, force_json=True)
+        return await prompt.acall(query=query, is_stream=True, force_json=True, postprocessor=json_pp)
 
 
 class MyAgent(BaseAgent):

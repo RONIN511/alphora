@@ -1,361 +1,488 @@
 """
-工具调用执行器
+alphora.tools.executor - 工具执行器
 
-用于在Agent中执行工具调用，支持：
-1. 自动解析LLM返回的工具调用
-2. 执行工具并返回结果
-3. 多轮工具调用循环
-4. 完整的调试追踪
+设计目标：
+1. 统一的工具执行入口
+2. 支持并行执行
+3. 执行追踪和统计
+4. LLM 响应解析
 """
 
-import json
-import time
-import logging
-import traceback
-from typing import Any, Callable, Dict, List, Optional, Union
-from dataclasses import dataclass
+from __future__ import annotations
 
-from alphora.tools.base_tools import Tool, ToolResult, ToolRegistry
-from alphora.debugger import tracer
+import json
+import asyncio
+import logging
+import uuid
+import time
+from typing import Any, Callable, Dict, List, Optional, Union, Awaitable
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from .types import ToolResult, ToolCall, ToolStatus, ToolConfig
+from .tool import Tool
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ToolCall:
-    """工具调用请求"""
-    id: str
-    name: str
-    arguments: Dict[str, Any]
-
+# ==================== 执行追踪 ====================
 
 @dataclass
-class ToolCallResult:
-    """工具调用结果"""
+class ExecutionTrace:
+    """单次执行的追踪信息"""
     call_id: str
     tool_name: str
-    result: ToolResult
-    duration_ms: float = 0
+    arguments: Dict[str, Any]
+    result: Optional[ToolResult] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_ms: float = 0.0
+    error: Optional[str] = None
+    retries: int = 0
 
-    def to_message(self) -> Dict[str, Any]:
-        """转换为消息格式"""
+    def to_dict(self) -> Dict[str, Any]:
         return {
-            "role": "tool",
-            "tool_call_id": self.call_id,
-            "name": self.tool_name,
-            "content": str(self.result)
+            "call_id": self.call_id,
+            "tool_name": self.tool_name,
+            "arguments": self.arguments,
+            "status": self.result.status.value if self.result else "pending",
+            "duration_ms": self.duration_ms,
+            "error": self.error,
+            "retries": self.retries,
         }
 
 
+@dataclass
+class ExecutionTracer:
+    """执行追踪器"""
+    traces: List[ExecutionTrace] = field(default_factory=list)
+
+    def add(self, trace: ExecutionTrace) -> None:
+        self.traces.append(trace)
+
+    def get_by_tool(self, tool_name: str) -> List[ExecutionTrace]:
+        return [t for t in self.traces if t.tool_name == tool_name]
+
+    def get_stats(self) -> Dict[str, Any]:
+        if not self.traces:
+            return {}
+
+        success_count = sum(1 for t in self.traces if t.result and t.result.success)
+        total_duration = sum(t.duration_ms for t in self.traces)
+
+        return {
+            "total_calls": len(self.traces),
+            "success_count": success_count,
+            "error_count": len(self.traces) - success_count,
+            "total_duration_ms": total_duration,
+            "avg_duration_ms": total_duration / len(self.traces),
+        }
+
+    def clear(self) -> None:
+        self.traces.clear()
+
+
+# ==================== 工具执行器 ====================
+
 class ToolExecutor:
     """
-    工具执行器（增强版）
+    工具执行器
 
-    用于解析和执行工具调用，集成调试追踪
+    统一的工具执行入口，支持：
+    - 单工具执行
+    - 批量执行
+    - 并行执行
+    - LLM 响应解析
+    - 执行追踪
 
-    使用方式：
-    ```python
-    # 注册工具
-    registry = ToolRegistry()
-    registry.register(search_tool)
-    registry.register(calculator_tool)
-
-    executor = ToolExecutor(registry, agent_id="my_agent")
-
-    # 解析LLM返回的工具调用
-    tool_calls = executor.parse_tool_calls(llm_response)
-
-    # 执行工具调用
-    results = await executor.execute_all(tool_calls)
-
-    # 构建新的消息
-    messages = executor.build_tool_messages(results)
-    ```
+    Examples:
+        >>> executor = ToolExecutor()
+        >>> executor.register(search_tool)
+        >>> executor.register(calc_tool)
+        >>>
+        >>> # 单工具执行
+        >>> result = await executor.execute("search", query="Python")
+        >>>
+        >>> # 解析 LLM 响应并执行
+        >>> calls = executor.parse_llm_response(response)
+        >>> results = await executor.execute_calls(calls)
     """
 
     def __init__(
             self,
-            registry: ToolRegistry,
-            agent_id: Optional[str] = None,
-            on_tool_start: Optional[Callable[[ToolCall], None]] = None,
-            on_tool_end: Optional[Callable[[ToolCallResult], None]] = None
+            tools: Optional[List[Tool]] = None,
+            config: Optional[ToolConfig] = None,
     ):
-        self.registry = registry
-        self.agent_id = agent_id
-        self.on_tool_start = on_tool_start
-        self.on_tool_end = on_tool_end
+        self._tools: Dict[str, Tool] = {}
+        self._config = config or ToolConfig()
+        self._tracer = ExecutionTracer()
 
-    def parse_tool_calls(self, response: Union[str, Dict, Any]) -> List[ToolCall]:
-        """
-        从LLM响应中解析工具调用
+        # 回调
+        self._on_start: List[Callable] = []
+        self._on_end: List[Callable] = []
 
-        支持多种格式：
-        1. OpenAI格式的tool_calls
-        2. 自定义JSON格式
-        """
-        tool_calls = []
+        if tools:
+            for t in tools:
+                self.register(t)
 
-        # 处理OpenAI格式
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            for tc in response.tool_calls:
-                tool_calls.append(ToolCall(
-                    id=tc.id,
-                    name=tc.function.name,
-                    arguments=json.loads(tc.function.arguments)
-                ))
-            return tool_calls
+    # ==================== 工具管理 ====================
 
-        # 处理字典格式
-        if isinstance(response, dict):
-            # OpenAI消息格式
-            if 'tool_calls' in response:
-                for tc in response['tool_calls']:
-                    func = tc.get('function', tc)
-                    tool_calls.append(ToolCall(
-                        id=tc.get('id', f"call_{len(tool_calls)}"),
-                        name=func['name'],
-                        arguments=json.loads(func['arguments'])
-                        if isinstance(func['arguments'], str)
-                        else func['arguments']
-                    ))
-                return tool_calls
+    def register(self, tool: Tool) -> ToolExecutor:
+        """注册工具"""
+        if tool._config is None:
+            tool.configure(self._config)
+        self._tools[tool.name] = tool
+        return self
 
-            # 简单格式 {"tool": "name", "args": {...}}
-            if 'tool' in response:
-                tool_calls.append(ToolCall(
-                    id=f"call_0",
-                    name=response['tool'],
-                    arguments=response.get('args', response.get('arguments', {}))
-                ))
-                return tool_calls
+    def unregister(self, name: str) -> bool:
+        """注销工具"""
+        if name in self._tools:
+            del self._tools[name]
+            return True
+        return False
 
-        # 处理字符串格式（尝试JSON解析）
-        if isinstance(response, str):
-            try:
-                data = json.loads(response)
-                return self.parse_tool_calls(data)
-            except json.JSONDecodeError:
-                pass
+    def get(self, name: str) -> Optional[Tool]:
+        """获取工具"""
+        return self._tools.get(name)
 
-        return tool_calls
+    def list(self) -> List[Tool]:
+        """列出所有工具"""
+        return list(self._tools.values())
 
-    async def execute(self, tool_call: ToolCall) -> ToolCallResult:
-        """执行单个工具调用"""
-        start_time = time.time()
+    def names(self) -> List[str]:
+        """列出所有工具名"""
+        return list(self._tools.keys())
 
-        # 追踪开始
-        debug_call_id = tracer.track_tool_start(
-            tool_name=tool_call.name,
-            args=tool_call.arguments,
-            agent_id=self.agent_id
+    # ==================== 执行 ====================
+
+    async def execute(self, name: str, **kwargs) -> ToolResult:
+        """执行单个工具"""
+        tool = self._tools.get(name)
+        if not tool:
+            return ToolResult.fail(f"Tool not found: {name}")
+
+        call = ToolCall(
+            id=str(uuid.uuid4()),
+            name=name,
+            arguments=kwargs,
         )
 
-        if self.on_tool_start:
-            self.on_tool_start(tool_call)
+        return await self._execute_call(tool, call)
 
-        tool = self.registry.get(tool_call.name)
+    async def execute_call(self, call: ToolCall) -> ToolResult:
+        """执行 ToolCall"""
+        tool = self._tools.get(call.name)
+        if not tool:
+            return ToolResult.fail(f"Tool not found: {call.name}")
 
-        if tool is None:
-            result = ToolResult.fail(f"Tool '{tool_call.name}' not found")
-            tracer.track_tool_error(
-                call_id=debug_call_id,
-                tool_name=tool_call.name,
-                error=f"Tool '{tool_call.name}' not found",
-                agent_id=self.agent_id
-            )
-        else:
-            try:
-                result = await tool(**tool_call.arguments)
-            except Exception as e:
-                logger.exception(f"Tool execution failed: {tool_call.name}")
-                result = ToolResult.fail(str(e))
-                tracer.track_tool_error(
-                    call_id=debug_call_id,
-                    tool_name=tool_call.name,
-                    error=str(e),
-                    agent_id=self.agent_id
-                )
+        return await self._execute_call(tool, call)
 
-        duration_ms = (time.time() - start_time) * 1000
-
-        # 追踪结束（成功情况）
-        if result.success:
-            tracer.track_tool_end(
-                call_id=debug_call_id,
-                tool_name=tool_call.name,
-                result=result.data,
-                duration_ms=duration_ms,
-                agent_id=self.agent_id
-            )
-
-        call_result = ToolCallResult(
-            call_id=tool_call.id,
-            tool_name=tool_call.name,
-            result=result,
-            duration_ms=duration_ms
-        )
-
-        if self.on_tool_end:
-            self.on_tool_end(call_result)
-
-        return call_result
-
-    async def execute_all(self, tool_calls: List[ToolCall]) -> List[ToolCallResult]:
-        """执行所有工具调用"""
+    async def execute_calls(self, calls: List[ToolCall]) -> List[ToolResult]:
+        """顺序执行多个调用"""
         results = []
-        for tc in tool_calls:
-            result = await self.execute(tc)
+        for call in calls:
+            result = await self.execute_call(call)
             results.append(result)
         return results
 
-    def build_tool_messages(self, results: List[ToolCallResult]) -> List[Dict[str, Any]]:
-        """构建工具结果消息"""
-        return [result.to_message() for result in results]
+    async def execute_parallel(
+            self,
+            calls: List[ToolCall],
+            max_concurrent: int = 5,
+    ) -> List[ToolResult]:
+        """并行执行多个调用"""
+        semaphore = asyncio.Semaphore(max_concurrent)
 
-    def get_tools_for_llm(self) -> List[Dict[str, Any]]:
-        """获取LLM可用的工具定义"""
-        return self.registry.to_openai_tools()
+        async def execute_with_semaphore(call: ToolCall) -> ToolResult:
+            async with semaphore:
+                return await self.execute_call(call)
 
+        tasks = [execute_with_semaphore(call) for call in calls]
+        return await asyncio.gather(*tasks)
 
-class ToolAgentMixin:
-    """
-    工具Agent混入类
-
-    为BaseAgent添加工具调用能力
-
-    使用方式：
-    ```python
-    class MyAgent(BaseAgent, ToolAgentMixin):
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            self.setup_tools()
-
-            # 注册工具
-            @self.tool
-            async def search(query: str) -> str:
-                '''搜索互联网'''
-                return f"搜索结果: {query}"
-
-        async def chat(self, query: str):
-            # 使用工具增强的对话
-            response = await self.chat_with_tools(query)
-            return response
-    ```
-    """
-
-    def setup_tools(self):
-        """初始化工具系统"""
-        self._tool_registry = ToolRegistry()
-
-        # 获取agent_id
-        agent_id = getattr(self, 'agent_id', None)
-
-        self._tool_executor = ToolExecutor(
-            self._tool_registry,
-            agent_id=agent_id,
-            on_tool_start=self._on_tool_start,
-            on_tool_end=self._on_tool_end
+    async def _execute_call(self, tool: Tool, call: ToolCall) -> ToolResult:
+        """执行工具调用（内部方法）"""
+        trace = ExecutionTrace(
+            call_id=call.id,
+            tool_name=call.name,
+            arguments=call.arguments,
+            started_at=datetime.now(),
         )
 
-    def _on_tool_start(self, tool_call: ToolCall):
-        """工具开始执行回调"""
-        logger.info(f"Executing tool: {tool_call.name}")
+        # 触发开始回调
+        for callback in self._on_start:
+            try:
+                callback(call)
+            except Exception as e:
+                logger.warning(f"on_start callback error: {e}")
 
-    def _on_tool_end(self, result: ToolCallResult):
-        """工具执行完成回调"""
-        status = "success" if result.result.success else "failed"
-        logger.info(f"Tool {result.tool_name} {status} ({result.duration_ms:.0f}ms)")
+        start_time = time.time()
 
-    def register_tool(self, tool: Tool):
-        """注册工具"""
-        self._tool_registry.register(tool)
+        try:
+            # 执行工具
+            result = await tool(**call.arguments)
 
-    def tool(
+            # 设置追踪信息
+            result.tool_name = call.name
+            result.call_id = call.id
+            result.started_at = trace.started_at
+            result.finished_at = datetime.now()
+            result.duration_ms = (time.time() - start_time) * 1000
+
+            trace.result = result
+            trace.duration_ms = result.duration_ms
+
+        except Exception as e:
+            logger.exception(f"Tool execution error: {call.name}")
+            result = ToolResult.fail(str(e))
+            result.tool_name = call.name
+            result.call_id = call.id
+
+            trace.result = result
+            trace.error = str(e)
+            trace.duration_ms = (time.time() - start_time) * 1000
+
+        trace.finished_at = datetime.now()
+        self._tracer.add(trace)
+
+        # 触发结束回调
+        for callback in self._on_end:
+            try:
+                callback(trace)
+            except Exception as e:
+                logger.warning(f"on_end callback error: {e}")
+
+        return result
+
+    # ==================== LLM 响应解析 ====================
+
+    def parse_llm_response(self, response: Any) -> List[ToolCall]:
+        """
+        解析 LLM 响应，提取工具调用
+
+        支持 OpenAI 和 Anthropic 格式
+        """
+        calls = []
+
+        # OpenAI 格式
+        if hasattr(response, 'choices'):
+            message = response.choices[0].message
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                for tc in message.tool_calls:
+                    calls.append(ToolCall.from_openai(tc))
+            return calls
+
+        # Anthropic 格式
+        if hasattr(response, 'content'):
+            for block in response.content:
+                if hasattr(block, 'type') and block.type == 'tool_use':
+                    calls.append(ToolCall.from_anthropic(block))
+            return calls
+
+        # 字典格式（OpenAI）
+        if isinstance(response, dict):
+            if 'choices' in response:
+                message = response['choices'][0].get('message', {})
+                tool_calls = message.get('tool_calls', [])
+                for tc in tool_calls:
+                    calls.append(ToolCall.from_openai(tc))
+                return calls
+
+            # 直接的工具调用格式
+            if 'tool_calls' in response:
+                for tc in response['tool_calls']:
+                    calls.append(ToolCall.from_openai(tc))
+                return calls
+
+        # 列表格式（多个工具调用）
+        if isinstance(response, list):
+            for item in response:
+                if isinstance(item, dict) and 'name' in item:
+                    calls.append(ToolCall.from_dict(item))
+
+        return calls
+
+    def build_tool_messages(
             self,
-            func: Optional[Callable] = None,
-            *,
-            name: Optional[str] = None,
-            description: Optional[str] = None
-    ):
+            results: List[ToolResult],
+            format: str = "openai",
+    ) -> List[Dict[str, Any]]:
         """
-        工具装饰器
+        构建工具结果消息
 
-        用于将方法注册为工具
+        用于将工具执行结果发送回 LLM
         """
-        from alphora.tools.decorators import tool as tool_decorator
-
-        def decorator(fn):
-            tool_instance = tool_decorator(
-                fn,
-                name=name,
-                description=description,
-                register=False
-            )
-            self._tool_registry.register(tool_instance)
-            return tool_instance
-
-        if func is not None:
-            return decorator(func)
-        return decorator
-
-    async def execute_tools(self, tool_calls: List[ToolCall]) -> List[ToolCallResult]:
-        """执行工具调用"""
-        return await self._tool_executor.execute_all(tool_calls)
-
-    def get_tools_schema(self) -> List[Dict[str, Any]]:
-        """获取工具Schema"""
-        return self._tool_executor.get_tools_for_llm()
-
-    async def chat_with_tools(
-            self,
-            query: str,
-            max_iterations: int = 5,
-            system_prompt: Optional[str] = None
-    ) -> str:
-        """
-        带工具调用的对话
-
-        自动处理工具调用循环
-        """
-        if not hasattr(self, 'llm') or self.llm is None:
-            raise ValueError("LLM not configured")
-
         messages = []
 
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+        for result in results:
+            if format == "openai":
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": result.call_id or "",
+                    "content": result.to_llm_content(),
+                })
+            elif format == "anthropic":
+                messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": result.call_id or "",
+                        "content": result.to_llm_content(),
+                    }]
+                })
 
-        messages.append({"role": "user", "content": query})
+        return messages
 
-        tools = self.get_tools_schema()
+    # ==================== Schema 生成 ====================
 
-        for iteration in range(max_iterations):
-            # 调用LLM
-            response = await self.llm.aget_non_stream_response(
-                message=query,
-                system_prompt=system_prompt
+    def get_tools_schema(self, format: str = "openai") -> List[Dict[str, Any]]:
+        """获取所有工具的 Schema"""
+        if format == "openai":
+            return [t.to_openai() for t in self._tools.values()]
+        elif format == "anthropic":
+            return [t.to_anthropic() for t in self._tools.values()]
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+
+    # ==================== 回调注册 ====================
+
+    def on_start(self, callback: Callable[[ToolCall], None]) -> ToolExecutor:
+        """注册执行开始回调"""
+        self._on_start.append(callback)
+        return self
+
+    def on_end(self, callback: Callable[[ExecutionTrace], None]) -> ToolExecutor:
+        """注册执行结束回调"""
+        self._on_end.append(callback)
+        return self
+
+    # ==================== 追踪和统计 ====================
+
+    @property
+    def tracer(self) -> ExecutionTracer:
+        return self._tracer
+
+    def get_stats(self) -> Dict[str, Any]:
+        return self._tracer.get_stats()
+
+    def clear_traces(self) -> None:
+        self._tracer.clear()
+
+
+# ==================== 带工具的对话执行器 ====================
+
+class ToolConversationExecutor:
+    """
+    带工具的对话执行器
+
+    自动处理工具调用循环
+
+    Examples:
+        >>> executor = ToolConversationExecutor(llm, tools)
+        >>> response = await executor.chat("查询今年销售额最高的产品")
+    """
+
+    def __init__(
+            self,
+            llm: Any,
+            tools: List[Tool],
+            system_prompt: Optional[str] = None,
+            max_iterations: int = 10,
+            format: str = "openai",
+    ):
+        self.llm = llm
+        self.tool_executor = ToolExecutor(tools)
+        self.system_prompt = system_prompt
+        self.max_iterations = max_iterations
+        self.format = format
+
+    async def chat(
+            self,
+            message: str,
+            history: Optional[List[Dict]] = None,
+    ) -> str:
+        """
+        执行带工具的对话
+
+        自动处理工具调用循环，直到 LLM 返回最终回复
+        """
+        # 构建消息
+        messages = history or []
+        if self.system_prompt and not any(m.get('role') == 'system' for m in messages):
+            messages.insert(0, {"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": message})
+
+        # 获取工具定义
+        tools_schema = self.tool_executor.get_tools_schema(self.format)
+
+        for iteration in range(self.max_iterations):
+            # 调用 LLM
+            response = await self.llm.chat(
+                messages=messages,
+                tools=tools_schema if tools_schema else None,
             )
 
             # 解析工具调用
-            tool_calls = self._tool_executor.parse_tool_calls(response)
+            tool_calls = self.tool_executor.parse_llm_response(response)
 
             if not tool_calls:
-                # 没有工具调用，返回响应
-                return response
+                # 没有工具调用，返回最终回复
+                return self._extract_response_text(response)
+
+            # 添加 assistant 消息
+            messages.append(self._build_assistant_message(response))
 
             # 执行工具
-            results = await self.execute_tools(tool_calls)
+            results = await self.tool_executor.execute_calls(tool_calls)
 
-            # 构建工具结果消息
-            tool_messages = self._tool_executor.build_tool_messages(results)
+            # 添加工具结果
+            tool_messages = self.tool_executor.build_tool_messages(results, self.format)
             messages.extend(tool_messages)
 
-            # 将工具结果添加到query中继续对话
-            tool_results_str = "\n".join([
-                f"[{r.tool_name}]: {r.result}"
-                for r in results
-            ])
-            query = f"工具调用结果:\n{tool_results_str}\n\n请基于以上结果回答用户问题。"
+            logger.debug(f"Iteration {iteration + 1}: executed {len(tool_calls)} tools")
 
         return "达到最大迭代次数，无法完成任务"
+
+    def _extract_response_text(self, response: Any) -> str:
+        """提取响应文本"""
+        if self.format == "anthropic":
+            if hasattr(response, 'content'):
+                return "".join(
+                    block.text for block in response.content
+                    if hasattr(block, 'text')
+                )
+
+        if hasattr(response, 'choices'):
+            return response.choices[0].message.content or ""
+
+        if isinstance(response, dict):
+            return response.get('content', response.get('text', str(response)))
+
+        return str(response)
+
+    def _build_assistant_message(self, response: Any) -> Dict[str, Any]:
+        """构建 assistant 消息"""
+        if self.format == "anthropic":
+            return {"role": "assistant", "content": response.content}
+
+        if hasattr(response, 'choices'):
+            msg = response.choices[0].message
+            result = {"role": "assistant", "content": msg.content}
+
+            if msg.tool_calls:
+                result["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        }
+                    }
+                    for tc in msg.tool_calls
+                ]
+
+            return result
+
+        return {"role": "assistant", "content": str(response)}
 

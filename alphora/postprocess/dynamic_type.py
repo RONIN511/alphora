@@ -18,17 +18,20 @@ class DynamicTypePP(BasePostProcessor):
         self.default_content_type = default_content_type
 
     def process(self, generator: BaseGenerator[GeneratorOutput]) -> BaseGenerator[GeneratorOutput]:
+
         # 创建一个包装生成器的新生成器
         class ContentTypeDetectedGenerator(BaseGenerator[GeneratorOutput]):
             def __init__(self, original_generator: BaseGenerator[GeneratorOutput],
                          char_to_content_type: dict,
                          default_content_type: Optional[str]):
+
                 super().__init__(original_generator.content_type)
                 self.original_generator = original_generator
                 self.char_to_content_type = char_to_content_type
                 self.default_content_type = default_content_type
 
             def generate(self) -> Iterator[GeneratorOutput]:
+
                 # 逐个处理原始生成器的输出
                 for output in self.original_generator:
                     # 检查是否包含检测字符
@@ -56,6 +59,7 @@ class DynamicTypePP(BasePostProcessor):
                         yield output
 
             async def agenerate(self) -> Iterator[GeneratorOutput]:
+
                 # 逐个处理原始生成器的输出
                 async for output in self.original_generator:
                     # 检查是否包含检测字符
