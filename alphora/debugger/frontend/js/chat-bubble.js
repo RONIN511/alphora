@@ -14,7 +14,7 @@ const ChatBubble = {
             label: 'SYSTEM' 
         },
         'user': { 
-            bg: 'var(--bg-panel)', 
+            bg: 'rgb(241, 245, 249)',
             border: 'var(--border)', 
             color: 'var(--text-secondary)', 
             label: 'USER' 

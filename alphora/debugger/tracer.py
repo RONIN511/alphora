@@ -1,7 +1,7 @@
 """
-Alphora Debugger - Enhanced Tracer
+Alphora Debugger
 
-改进功能：
+功能：
 1. 会话(Session)管理 - 区分每次对话
 2. 完整的流式输出追踪 - 记录每个chunk和最终输出
 3. Prompter追踪 - 记录每个Prompter的完整输入输出

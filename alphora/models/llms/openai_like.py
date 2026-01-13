@@ -415,7 +415,7 @@ class OpenAILike(BaseLLM):
             prompt_id: Optional[str] = None
     ) -> BaseGenerator:
         """
-        异步 - 流式输出 (核心方法)
+        异步 - 流式输出
         """
         tracer = self._get_tracer()
         call_id = None
@@ -586,3 +586,4 @@ class OpenAILike(BaseLLM):
                                   completion_params=other.completion_params)
 
         return self
+

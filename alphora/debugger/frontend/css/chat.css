@@ -45,8 +45,8 @@
     color: var(--purple); 
 }
 
-.chat-message.user .chat-bubble { 
-    background: var(--bg-panel); 
+.chat-message.user .chat-bubble {
+    background: var(--bg-panel);
     border: 1px solid var(--border);
     border-left: 3px solid var(--text-secondary);
 }
