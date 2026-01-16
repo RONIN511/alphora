@@ -36,7 +36,8 @@ class BaseLLM(ABC):
                                 message: Union[str, Message, List[Dict[str, Any]]],
                                 enable_thinking: bool = False,
                                 system_prompt: Optional[str] = None,
-                                prompt_id: Optional[str] = None) -> str:
+                                prompt_id: Optional[str] = None,
+                                tools: Optional[List] = None) -> str | List:
         """Synchronous non-streaming response."""
         raise NotImplementedError
 
@@ -45,7 +46,8 @@ class BaseLLM(ABC):
                                        message: Union[str, Message, List[Dict[str, Any]]],
                                        enable_thinking: bool = False,
                                        system_prompt: Optional[str] = None,
-                                       prompt_id: Optional[str] = None) -> str:
+                                       prompt_id: Optional[str] = None,
+                                       tools: Optional[List] = None) -> str | List:
         """Asynchronous non-streaming response."""
         raise NotImplementedError
 

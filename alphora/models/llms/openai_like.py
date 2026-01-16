@@ -115,11 +115,59 @@ class OpenAILike(BaseLLM):
         except ImportError:
             return None
 
+    def _tool_call(self, client: OpenAI, params: Dict[str, Any], tools: List, messages: List[Dict[str, Any]]) -> List:
+        """
+        调用工具方法
+        """
+        try:
+            completion = client.chat.completions.create(
+                **params,
+                messages=messages,
+                timeout=9999,
+                stream=False,
+                tools=tools,
+            )
+
+            tool_calls = completion.choices[0].message.tool_calls or []
+
+            tool_calls = [tc.model_dump() for tc in tool_calls]
+
+            return tool_calls
+
+        except Exception as e:
+            raise RuntimeError(f"llm tool call error: {e}")
+        pass
+
+    async def _atool_call(self, async_client: AsyncOpenAI, params: Dict[str, Any], tools: List, messages: List[Dict[str, Any]]) -> List:
+        """
+        异步调用工具方法。
+        这里全部默认不流式输出
+        """
+        try:
+            completion = await async_client.chat.completions.create(
+                **params,
+                messages=messages,
+                timeout=9999,
+                stream=False,
+                tools=tools,
+            )
+
+            tool_calls = completion.choices[0].message.tool_calls or []
+
+            tool_calls = [tc.model_dump() for tc in tool_calls]
+
+            return tool_calls
+
+        except Exception as e:
+            raise RuntimeError(f"llm tool call error: {e}")
+        pass
+
     def get_non_stream_response(self,
                                 message: Union[str, Message, List[Dict[str, Any]]],
                                 enable_thinking: bool = False,
                                 system_prompt: Optional[str] = None,
-                                prompt_id: Optional[str] = None) -> str:
+                                prompt_id: Optional[str] = None,
+                                tools: Optional[List] = None) -> str | List:
         """
         同步-非流式
         """
@@ -157,6 +205,13 @@ class OpenAILike(BaseLLM):
             if tracer and call_id:
                 tracer.track_llm_error(call_id, str(e), traceback.format_exc())
             raise RuntimeError(f"llm error: {e}")
+
+        if tools:
+            try:
+                tool_calls = self._tool_call(client=client, params=params, tools=tools, messages=messages)
+                return tool_calls
+            except Exception as e:
+                raise e
 
         try:
             completion = client.chat.completions.create(
@@ -212,7 +267,8 @@ class OpenAILike(BaseLLM):
             content_type: str = "char",
             enable_thinking: bool = False,
             system_prompt: Optional[str] = None,
-            prompt_id: Optional[str] = None
+            prompt_id: Optional[str] = None,
+            tools: Optional[List] = None
     ) -> BaseGenerator:
         """
         同步-流式输出
@@ -332,7 +388,8 @@ class OpenAILike(BaseLLM):
                                        message: Union[str, Message, List[Dict[str, Any]]],
                                        enable_thinking: bool = False,
                                        system_prompt: Optional[str] = None,
-                                       prompt_id: Optional[str] = None) -> str:
+                                       prompt_id: Optional[str] = None,
+                                       tools: Optional[List] = None) -> str | List:
         """
         异步-非流式输出
         """
@@ -370,6 +427,13 @@ class OpenAILike(BaseLLM):
             if tracer and call_id:
                 tracer.track_llm_error(call_id, str(e), traceback.format_exc())
             raise RuntimeError(f"llm error: {e}")
+
+        if tools:
+            try:
+                tool_calls = await self._atool_call(async_client=async_client, params=params, tools=tools, messages=messages)
+                return tool_calls
+            except Exception as e:
+                raise e
 
         try:
             completion = await async_client.chat.completions.create(

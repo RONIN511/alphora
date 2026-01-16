@@ -143,6 +143,7 @@ class BaseAgent(object):
     def create_prompt(
             self,
             prompt: str = None,
+            user_prompt: str = None,
             template_path: str = None,
             template_desc: str = "",
             content_type: Optional[str] = None,
@@ -187,6 +188,7 @@ class BaseAgent(object):
         注意：两种模式不能混用！
 
         Args:
+            user_prompt: role=user 的提示词
             prompt: 提示词字符串（传统模式）
             template_path: 提示词模板文件路径（传统模式）
             template_desc: 提示词描述
@@ -247,6 +249,7 @@ class BaseAgent(object):
                 memory_id = "default"
 
         prompt_instance = BasePrompt(
+            user_prompt=user_prompt or prompt,
             template_path=template_path,
             template_desc=template_desc,
             callback=self.callback,
@@ -263,8 +266,8 @@ class BaseAgent(object):
         try:
             prompt_instance.add_llm(model=self.llm)
 
-            if prompt:
-                prompt_instance.load_from_string(prompt=prompt)
+            # if prompt:
+            #     prompt_instance.load_from_string(prompt=prompt)
 
             prompt_instance.verbose = self.verbose
 
