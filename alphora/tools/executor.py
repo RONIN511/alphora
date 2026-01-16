@@ -43,28 +43,106 @@ class ToolExecutor:
     def __init__(self, registry: ToolRegistry):
         self.registry = registry
 
-    async def execute(self, tool_calls: ToolCall | Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def execute(
+            self,
+            tool_calls: Union[ToolCall, List[Dict[str, Any]]],
+            memory_manager: Optional[Any] = None,
+            memory_id: str = "default",
+    ) -> List[Dict[str, Any]]:
         """
-        主入口：接收大模型的 tool_calls 列表，并行执行，返回结果列表。
+        全自动执行工具。
+
+        功能：
+        1. 自动补全历史：如果记忆里没有这条 ToolCall 记录，自动帮你伪造一条 Assistant 消息存进去。
+        2. 自动执行：并行运行所有工具。
+        3. 自动存档：把运行结果存回记忆。
 
         Args:
-            tool_calls: OpenAI SDK 返回的 tool_calls 对象列表 (或是字典形式)。
-
-        Returns:
-            List[Dict]: 符合 OpenAI 格式的 message 列表。
+            :param memory_id:
+            :param tool_calls:
+            :param memory_manager:
         """
         if not tool_calls:
             return []
 
-        tasks = []
+        # 1. 规范化输入
+        normalized_calls = []
+        calls_list = tool_calls if isinstance(tool_calls, list) else [tool_calls]
+        for call in calls_list:
+            normalized_calls.append(call)
+
+        # === 步骤 1: 自动补全 Input (Assistant Message) ===
+        if memory_manager:
+            self._ensure_assistant_entry(
+                memory_manager,
+                memory_id,
+                normalized_calls,
+            )
+
+        # === 步骤 2: 并行执行 (Execution) ===
+        tasks = [self._execute_single_tool(call) for call in normalized_calls]
+        results_objects: List[ToolExecutionResult] = await asyncio.gather(*tasks)
+
+        results_messages = [res.to_openai_message() for res in results_objects]
+
+        # === 步骤 3: 自动保存 Output (Tool Message) ===
+        if memory_manager:
+            self._auto_save_results(memory_manager, memory_id, results_messages)
+
+        return results_messages
+
+    def _ensure_assistant_entry(
+            self,
+            memory_manager: Any,
+            memory_id: str,
+            tool_calls: List[Dict[str, Any]],
+
+    ):
+        """
+        [内部方法] 检查记忆完整性，如果缺 Assistant 记录，直接自动补全。
+        """
+        # 1. 检查是否已经存在 (避免重复存储)
+        # 获取最近几条记忆来比对 ID
+        recent_memories = memory_manager.get_memories(memory_id)[-5:]
+        existing_ids = set()
+        for mem in recent_memories:
+            payload = mem.content
+            if isinstance(payload, dict) and "tool_calls" in payload:
+                for tc in payload["tool_calls"]:
+                    if "id" in tc:
+                        existing_ids.add(tc["id"])
+
+        # 检查当前这批 calls 是否都在记忆里了
+        # 只要发现有一个 ID 没在记忆里，我们就认为这一整批都需要补全 (通常一批是一起发的)
+        needs_save = False
         for call in tool_calls:
-            call_data = call if isinstance(call, dict) else call.model_dump()
-            tasks.append(self._execute_single_tool(call_data))
+            if call.get("id") not in existing_ids:
+                needs_save = True
+                break
 
-        # 并行执行所有工具调用 (Fail-safe: return_exceptions=False, 因为我们在内部已经捕获了所有异常，这里不会抛出)
-        results: List[ToolExecutionResult] = await asyncio.gather(*tasks)
+        if not needs_save:
+            return    # 记忆是完美的，无需操作
 
-        return [res.to_openai_message() for res in results]
+        # 2. 构造 Assistant 消息并保存
+        logger.info(f"Auto-saving missing Assistant ToolCall entry to memory '{memory_id}'")
+
+        assistant_payload = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": tool_calls
+        }
+
+        memory_manager.add_payload(assistant_payload, memory_id=memory_id)
+
+    def _auto_save_results(
+            self,
+            memory_manager: Any,
+            memory_id: str,
+            results: List[Dict[str, Any]]
+    ):
+        """[内部方法] 自动写入结果"""
+        for msg in results:
+            memory_manager.add_payload(msg, memory_id=memory_id)
 
     async def _execute_single_tool(self, tool_call: Dict[str, Any]) -> ToolExecutionResult:
         """

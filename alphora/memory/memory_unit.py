@@ -124,10 +124,24 @@ class MemoryUnit:
     def get_role(self) -> str:
         """获取角色"""
         return self.content.get("role", "unknown")
-    
+
     def get_content_text(self) -> str:
-        """获取内容文本"""
-        return self.content.get("content", "")
+        """获取内容文本（用于搜索和显示）"""
+        content_val = self.content.get("content")
+
+        # 如果是纯文本
+        if content_val is not None:
+            return str(content_val)
+
+        # 如果是工具调用请求，将调用信息转为字符串以便于搜索
+        if "tool_calls" in self.content:
+            try:
+                # 将工具调用转为 JSON 字符串，这样你搜函数名也能搜到
+                return json.dumps(self.content["tool_calls"], ensure_ascii=False)
+            except:
+                return "[Tool Call]"
+
+        return ""
     
     def get_age(self) -> float:
         """获取记忆年龄（秒）"""
@@ -195,14 +209,15 @@ class MemoryUnit:
         if 'memory_type' in data and isinstance(data['memory_type'], str):
             data['memory_type'] = MemoryType(data['memory_type'])
         return cls(**data)
-    
-    def to_message_format(self) -> Dict[str, str]:
-        """转换为LLM消息格式"""
-        return {
-            "role": self.get_role(),
-            "content": self.get_content_text()
-        }
-    
+
+    def to_message_format(self) -> Dict[str, Any]:
+        """
+        转换为LLM消息格式
+
+        直接返回存储的完整结构。这样 tool_calls, tool_call_id, name 等字段才能被保留。
+        """
+        return self.content.copy()
+
     def __repr__(self) -> str:
         return (
             f"MemoryUnit(id={self.unique_id[:8]}..., "

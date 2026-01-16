@@ -393,6 +393,11 @@ class BasePrompt:
             self._memory.add_memory("user", query, memory_id=self._memory_id)
             self._memory.add_memory("assistant", response, memory_id=self._memory_id)
 
+    def _save_payload_to_memory(self, payload: Any):
+        """保存对话到记忆（query 原文 + LLM 响应原文）"""
+        if self.enable_memory and self._memory and self.auto_save_memory:
+            self._memory.add_payload(payload=payload, memory_id=self._memory_id)
+
     @staticmethod
     def _get_base_path():
         """
@@ -663,7 +668,15 @@ class BasePrompt:
             should_save = save_to_memory if save_to_memory is not None else self.auto_save_memory
 
             if should_save:
-                self._save_to_memory(query, tool_resp)
+                self._memory.add_memory("user", query, memory_id=self._memory_id)
+
+                if tool_resp:
+                    logger.debug(f'Detected ToolCall. Delegating persistence to ToolExecutor.')
+                    pass
+
+                if tool_resp.content:
+                    logger.debug(f'Saving standard LLM response to memory.')
+                    self._save_to_memory(query, tool_resp.content)
 
             return tool_resp
 

@@ -292,6 +292,80 @@ class MemoryManager:
 
         return new_memory.unique_id
 
+    def add_payload(
+            self,
+            payload: Dict[str, Any],
+            memory_id: str = 'default',
+            importance: Optional[float] = None,
+            tags: Optional[List[str]] = None,
+            metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        添加原始消息负载（用于支持 Tool Calls 等复杂结构）
+
+        Args:
+            payload: 完整的消息对象，例如:
+                     {'role': 'assistant', 'tool_calls': [...]}
+                     或
+                     {'role': 'tool', 'tool_call_id': '...', 'content': '...'}
+            memory_id: 记忆ID
+            importance: 重要性
+            tags: 标签
+            metadata: 元数据
+        """
+        if memory_id not in self._cache:
+            self._cache[memory_id] = []
+            self._turn_counter[memory_id] = 0
+
+        self._turn_counter[memory_id] += 1
+        current_turn = self._turn_counter[memory_id]
+
+        # 衰减旧记忆
+        for idx, memory in enumerate(self._cache[memory_id]):
+            memory_turn = idx + 1
+            self._decay_strategy.apply(memory, current_turn, memory_turn)
+
+        # 自动提取标签逻辑：如果是工具调用，提取函数名作为标签
+        extracted_tags = tags or []
+        if self._auto_extract_tags and not tags:
+            # 尝试从文本内容提取
+            content_str = payload.get("content")
+            if content_str and isinstance(content_str, str):
+                extracted_tags = extract_keywords(content_str, top_n=5)
+
+            # 尝试从工具调用中提取函数名
+            if "tool_calls" in payload:
+                for tool in payload["tool_calls"]:
+                    func_name = tool.get("function", {}).get("name")
+                    if func_name:
+                        extracted_tags.append(f"call:{func_name}")
+
+        new_memory = MemoryUnit(
+            content=payload,  # 直接存字典
+            importance=importance or 0.5,
+            tags=extracted_tags,
+            metadata=metadata or {},
+            memory_type=MemoryType.SHORT_TERM
+        )
+
+        # 增强新记忆
+        new_memory.reinforce(0.1)
+
+        # 添加到缓存和存储
+        self._cache[memory_id].append(new_memory)
+        self._save_memory(memory_id, new_memory)
+
+        # 触发反思
+        if self._auto_reflector:
+            asyncio.create_task(
+                self._auto_reflector.maybe_reflect(
+                    self._cache[memory_id],
+                    memory_id
+                )
+            )
+
+        return new_memory.unique_id
+
     def build_history(
             self,
             memory_id: str = "default",
