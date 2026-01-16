@@ -17,6 +17,7 @@ from json_repair import repair_json
 
 from alphora.models.llms.base import BaseLLM
 from alphora.models.llms.stream_helper import BaseGenerator
+from alphora.models.llms.types import ToolCall
 
 if TYPE_CHECKING:
     from alphora.memory import MemoryManager
@@ -522,7 +523,7 @@ class BasePrompt:
              long_response: bool = False,
              system_prompt: Union[str, List[str], None] = None,  # 运行时追加
              save_to_memory: Optional[bool] = None,
-             ) -> BaseGenerator | str | Any:
+             ) -> BaseGenerator | str | Any | ToolCall:
 
         if not self.llm:
             raise ValueError("LLM not initialized")
@@ -640,7 +641,7 @@ class BasePrompt:
                     long_response: bool = False,
                     system_prompt: Union[str, List[str], None] = None,
                     save_to_memory: Optional[bool] = None,
-                    ) -> BaseGenerator | str | Any:
+                    ) -> BaseGenerator | str | Any | ToolCall:
 
         if not self.llm:
             raise ValueError("LLM not initialized")
@@ -654,9 +655,17 @@ class BasePrompt:
 
         # 2. 工具调用
         if tools:
-            return await self.llm.aget_non_stream_response(
+
+            tool_resp = await self.llm.aget_non_stream_response(
                 message=msg_payload, system_prompt=None, tools=tools, prompt_id=self.prompt_id
             )
+
+            should_save = save_to_memory if save_to_memory is not None else self.auto_save_memory
+
+            if should_save:
+                self._save_to_memory(query, tool_resp)
+
+            return tool_resp
 
         # 3. 流式调用
         if is_stream:

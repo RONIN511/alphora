@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from .core import Tool
 from .registry import ToolRegistry
 from .exceptions import ToolValidationError, ToolExecutionError
+from alphora.models.llms.types import ToolCall
 
 # 设置日志
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ class ToolExecutor:
     def __init__(self, registry: ToolRegistry):
         self.registry = registry
 
-    async def execute(self, tool_calls: List[Any]) -> List[Dict[str, Any]]:
+    async def execute(self, tool_calls: ToolCall | Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         主入口：接收大模型的 tool_calls 列表，并行执行，返回结果列表。
 
@@ -57,15 +58,12 @@ class ToolExecutor:
 
         tasks = []
         for call in tool_calls:
-            # 兼容 OpenAI 对象或字典
             call_data = call if isinstance(call, dict) else call.model_dump()
             tasks.append(self._execute_single_tool(call_data))
 
-        # 并行执行所有工具调用 (Fail-safe: return_exceptions=False,
-        # 因为我们在内部已经捕获了所有异常，这里不会抛出)
+        # 并行执行所有工具调用 (Fail-safe: return_exceptions=False, 因为我们在内部已经捕获了所有异常，这里不会抛出)
         results: List[ToolExecutionResult] = await asyncio.gather(*tasks)
 
-        # 转换为 OpenAI 消息格式
         return [res.to_openai_message() for res in results]
 
     async def _execute_single_tool(self, tool_call: Dict[str, Any]) -> ToolExecutionResult:

@@ -11,6 +11,7 @@ OpenAI-Like LLM 客户端
 import os
 import time
 import json
+from .types import ToolCall
 import traceback
 from typing import (
     List, Dict, Union, Optional, Iterator, Mapping, Any, AsyncIterator
@@ -115,7 +116,7 @@ class OpenAILike(BaseLLM):
         except ImportError:
             return None
 
-    def _tool_call(self, client: OpenAI, params: Dict[str, Any], tools: List, messages: List[Dict[str, Any]]) -> List:
+    def _tool_call(self, client: OpenAI, params: Dict[str, Any], tools: List, messages: List[Dict[str, Any]]) -> ToolCall:
         """
         调用工具方法
         """
@@ -128,17 +129,16 @@ class OpenAILike(BaseLLM):
                 tools=tools,
             )
 
-            tool_calls = completion.choices[0].message.tool_calls or []
+            raw_tool_calls = completion.choices[0].message.tool_calls or []
 
-            tool_calls = [tc.model_dump() for tc in tool_calls]
+            tool_calls_list = [tc.model_dump() for tc in raw_tool_calls]
 
-            return tool_calls
+            return ToolCall(tool_calls=tool_calls_list)
 
         except Exception as e:
             raise RuntimeError(f"llm tool call error: {e}")
-        pass
 
-    async def _atool_call(self, async_client: AsyncOpenAI, params: Dict[str, Any], tools: List, messages: List[Dict[str, Any]]) -> List:
+    async def _atool_call(self, async_client: AsyncOpenAI, params: Dict[str, Any], tools: List, messages: List[Dict[str, Any]]) -> ToolCall:
         """
         异步调用工具方法。
         这里全部默认不流式输出
@@ -152,22 +152,29 @@ class OpenAILike(BaseLLM):
                 tools=tools,
             )
 
-            tool_calls = completion.choices[0].message.tool_calls or []
+            finish_reason = completion.choices[0].finish_reason
 
-            tool_calls = [tc.model_dump() for tc in tool_calls]
+            if finish_reason == 'stop':
+                content = completion.choices[0].message.content
+                return ToolCall(tool_calls=[], content=content)
 
-            return tool_calls
+            else:
+
+                raw_tool_calls = completion.choices[0].message.tool_calls or []
+
+                tool_calls_list = [tc.model_dump() for tc in raw_tool_calls]
+
+                return ToolCall(tool_calls=tool_calls_list, content=None)
 
         except Exception as e:
             raise RuntimeError(f"llm tool call error: {e}")
-        pass
 
     def get_non_stream_response(self,
                                 message: Union[str, Message, List[Dict[str, Any]]],
                                 enable_thinking: bool = False,
                                 system_prompt: Optional[str] = None,
                                 prompt_id: Optional[str] = None,
-                                tools: Optional[List] = None) -> str | List:
+                                tools: Optional[List] = None) -> str | ToolCall:
         """
         同步-非流式
         """
@@ -389,7 +396,7 @@ class OpenAILike(BaseLLM):
                                        enable_thinking: bool = False,
                                        system_prompt: Optional[str] = None,
                                        prompt_id: Optional[str] = None,
-                                       tools: Optional[List] = None) -> str | List:
+                                       tools: Optional[List] = None) -> str | ToolCall:
         """
         异步-非流式输出
         """
