@@ -278,7 +278,7 @@ class OpenAILike(BaseLLM):
             tools: Optional[List] = None
     ) -> BaseGenerator:
         """
-        同步-流式输出
+        同步-流式输出 (支持 Tools)
         """
         tracer = self._get_tracer()
         call_id = None
@@ -313,13 +313,18 @@ class OpenAILike(BaseLLM):
                 tracer.track_llm_error(call_id, str(e), traceback.format_exc())
             raise RuntimeError(f"llm error: {e}")
 
+        # 构建请求参数
+        create_kwargs = {
+            **params,
+            "messages": messages,
+            "stream": True,
+            "extra_body": self._get_extra_body(enable_thinking=enable_thinking),
+        }
+        if tools:
+            create_kwargs["tools"] = tools
+
         try:
-            stream = sync_client.chat.completions.create(
-                **params,
-                messages=messages,
-                stream=True,
-                extra_body=self._get_extra_body(enable_thinking=enable_thinking),
-            )
+            stream = sync_client.chat.completions.create(**create_kwargs)
         except Exception as e:
             if tracer and call_id:
                 tracer.track_llm_error(call_id, str(e), traceback.format_exc())
@@ -336,6 +341,14 @@ class OpenAILike(BaseLLM):
                 self._full_reasoning = ""
                 self.token_usage = None
 
+                # 工具调用缓存 (Index -> ToolCall Dict)
+                self._tool_calls_dict = {}
+
+            @property
+            def collected_tool_calls(self):
+                """将 buffer 中的 dict 转换为 list"""
+                return [v for k, v in sorted(self._tool_calls_dict.items())]
+
             def generate(self) -> Iterator[GeneratorOutput]:
                 try:
                     for chunk in self._stream:
@@ -346,19 +359,44 @@ class OpenAILike(BaseLLM):
                                     'completion_tokens': chunk.usage.completion_tokens or 0,
                                     'total_tokens': chunk.usage.total_tokens or 0
                                 }
-
                             continue
+
                         delta = chunk.choices[0].delta
                         finish_reason = chunk.choices[0].finish_reason
                         if finish_reason:
                             self.finish_reason = finish_reason
 
+                        # 1. 处理 Tool Calls (Accumulate, Do Not Yield)
+                        if delta.tool_calls:
+                            for tc in delta.tool_calls:
+                                idx = tc.index
+                                if idx not in self._tool_calls_dict:
+                                    self._tool_calls_dict[idx] = {
+                                        "index": idx,
+                                        "id": tc.id or "",
+                                        "type": "function",
+                                        "function": {"name": tc.function.name or "", "arguments": ""}
+                                    }
+                                else:
+                                    # Merge Logic
+                                    if tc.id:
+                                        self._tool_calls_dict[idx]["id"] += tc.id
+                                    if tc.function.name:
+                                        self._tool_calls_dict[idx]["function"]["name"] += tc.function.name
+
+                                # Append arguments (most common case in chunks)
+                                if tc.function.arguments:
+                                    self._tool_calls_dict[idx]["function"]["arguments"] += tc.function.arguments
+
+                            # Skip yielding for tool chunks
+                            continue
+
+                        # 2. 处理 Content / Reasoning
                         content = getattr(delta, 'content', '') or ''
                         reasoning = getattr(delta, 'reasoning_content', '') or ''
 
                         if reasoning:
                             self._full_reasoning += reasoning
-                            # 追踪流式块
                             if self._tracer and self._call_id:
                                 self._tracer.track_llm_stream_chunk(
                                     self._call_id, reasoning, 'think', is_reasoning=True
@@ -366,7 +404,6 @@ class OpenAILike(BaseLLM):
                             yield GeneratorOutput(content=reasoning, content_type='think')
                         elif content:
                             self._full_content += content
-                            # 追踪流式块
                             if self._tracer and self._call_id:
                                 self._tracer.track_llm_stream_chunk(
                                     self._call_id, content, self.content_type, is_reasoning=False
@@ -493,10 +530,11 @@ class OpenAILike(BaseLLM):
             content_type: str = "char",
             enable_thinking: bool = False,
             system_prompt: Optional[str] = None,
-            prompt_id: Optional[str] = None
+            prompt_id: Optional[str] = None,
+            tools: Optional[List] = None
     ) -> BaseGenerator:
         """
-        异步 - 流式输出
+        异步 - 流式输出 (支持 Tools)
         """
         tracer = self._get_tracer()
         call_id = None
@@ -531,14 +569,19 @@ class OpenAILike(BaseLLM):
                 tracer.track_llm_error(call_id, str(e), traceback.format_exc())
             raise RuntimeError(f"llm error: {e}")
 
+        # 构建请求参数
+        create_kwargs = {
+            **params,
+            "messages": messages,
+            "stream": True,
+            "extra_body": self._get_extra_body(enable_thinking),
+            "stream_options": {"include_usage": True}
+        }
+        if tools:
+            create_kwargs["tools"] = tools
+
         try:
-            stream = await async_client.chat.completions.create(
-                **params,
-                messages=messages,
-                stream=True,
-                extra_body=self._get_extra_body(enable_thinking),
-                stream_options={"include_usage": True}
-            )
+            stream = await async_client.chat.completions.create(**create_kwargs)
         except Exception as e:
             if tracer and call_id:
                 tracer.track_llm_error(call_id, str(e), traceback.format_exc())
@@ -555,6 +598,13 @@ class OpenAILike(BaseLLM):
                 self._full_reasoning = ""
 
                 self.token_usage = None
+
+                # 工具调用缓存
+                self._tool_calls_dict = {}
+
+            @property
+            def collected_tool_calls(self):
+                return [v for k, v in sorted(self._tool_calls_dict.items())]
 
             async def agenerate(self) -> AsyncIterator[GeneratorOutput]:
                 try:
@@ -575,12 +625,34 @@ class OpenAILike(BaseLLM):
                         if finish_reason:
                             self.finish_reason = finish_reason
 
+                        # 1. 处理 Tool Calls (Accumulate, Do Not Yield)
+                        if delta.tool_calls:
+                            for tc in delta.tool_calls:
+                                idx = tc.index
+                                if idx not in self._tool_calls_dict:
+                                    self._tool_calls_dict[idx] = {
+                                        "index": idx,
+                                        "id": tc.id or "",
+                                        "type": "function",
+                                        "function": {"name": tc.function.name or "", "arguments": ""}
+                                    }
+                                else:
+                                    if tc.id:
+                                        self._tool_calls_dict[idx]["id"] += tc.id
+                                    if tc.function.name:
+                                        self._tool_calls_dict[idx]["function"]["name"] += tc.function.name
+
+                                if tc.function.arguments:
+                                    self._tool_calls_dict[idx]["function"]["arguments"] += tc.function.arguments
+
+                            continue
+
+                        # 2. 处理 Content / Reasoning
                         content = getattr(delta, 'content', '') or ''
                         reasoning = getattr(delta, 'reasoning_content', '') or ''
 
                         if reasoning:
                             self._full_reasoning += reasoning
-                            # 追踪流式块
                             if self._tracer and self._call_id:
                                 self._tracer.track_llm_stream_chunk(
                                     self._call_id, reasoning, 'think', is_reasoning=True
@@ -589,8 +661,6 @@ class OpenAILike(BaseLLM):
 
                         elif content:
                             self._full_content += content
-
-                            # 追踪流式块
                             if self._tracer and self._call_id:
                                 self._tracer.track_llm_stream_chunk(
                                     self._call_id, content, self.content_type, is_reasoning=False)
@@ -598,7 +668,6 @@ class OpenAILike(BaseLLM):
                             yield GeneratorOutput(content=content, content_type=self.content_type)
 
                     # 结束追踪
-
                     if self._tracer and self._call_id:
                         self._tracer.track_llm_end(
                             call_id=self._call_id,

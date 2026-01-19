@@ -79,10 +79,6 @@ def restart_service(
     return {"status": "success", "message": f"Service '{service_name}' restarted successfully."}
 
 
-# ==============================================================================
-# 2. 构建 Agent 循环 (The Agent Loop)
-# ==============================================================================
-
 async def run_agent_loop(query: str):
 
     llm = OpenAILike()

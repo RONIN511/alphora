@@ -538,13 +538,13 @@ class BasePrompt:
 
         msg_payload = messages if not multimodal_message else multimodal_message
 
-        # 2. 工具调用 (非流式)
-        if tools:
+        # 2. 工具调用 (非流式优先，若未开启流式)
+        if tools and not is_stream:
             return self.llm.get_non_stream_response(
                 message=msg_payload, tools=tools, prompt_id=self.prompt_id
             )
 
-        # 3. 流式调用
+        # 3. 流式调用 (含流式工具处理)
         if is_stream:
             try:
                 # 准备生成器参数
@@ -555,6 +555,10 @@ class BasePrompt:
                     "prompt_id": self.prompt_id,
                     "system_prompt": None  # system_prompt 已融合进 messages
                 }
+
+                # 增加 tools 传参支持
+                if tools:
+                    gen_kwargs["tools"] = tools
 
                 if long_response:
                     from alphora.prompter.long_response import LongResponseGenerator
@@ -599,6 +603,13 @@ class BasePrompt:
                         print(content, end='', flush=True)
                         output_str += content
 
+                # 流结束后，检查是否有累计的 Tool Calls
+                collected_tools = getattr(generator, 'collected_tool_calls', None)
+                if collected_tools:
+                    # 如果有工具调用，返回 ToolCall 对象
+                    # 如果同时有文本(output_str)，也放入 ToolCall 的 content 中
+                    return ToolCall(tool_calls=collected_tools, content=output_str)
+
                 if force_json:
                     try:
                         output_str = repair_json(json_str=output_str)
@@ -621,7 +632,7 @@ class BasePrompt:
                 raise RuntimeError(f"流式响应错误: {e}")
 
         else:
-            # 4. 非流式调用
+            # 4. 非流式调用 (无 tools 的普通调用)
             try:
                 resp = self.llm.invoke(message=msg_payload)
 
@@ -658,8 +669,8 @@ class BasePrompt:
         messages = self.build_messages(query=query, force_json=force_json, runtime_system_prompt=system_prompt)
         msg_payload = messages if not multimodal_message else multimodal_message
 
-        # 2. 工具调用
-        if tools:
+        # 2. 工具调用 (非流式优先)
+        if tools and not is_stream:
 
             tool_resp = await self.llm.aget_non_stream_response(
                 message=msg_payload, system_prompt=None, tools=tools, prompt_id=self.prompt_id
@@ -690,6 +701,10 @@ class BasePrompt:
                     "prompt_id": self.prompt_id,
                     "system_prompt": None
                 }
+
+                # 增加 tools 传参支持
+                if tools:
+                    gen_kwargs["tools"] = tools
 
                 if long_response:
                     gen_kwargs.pop('prompt_id')
@@ -740,6 +755,11 @@ class BasePrompt:
                             print(content, end='', flush=True)
                         if ctype != '[RESPONSE_IGNORE]':
                             output_str += content
+
+                # 流结束后，检查是否有累计的 Tool Calls
+                collected_tools = getattr(generator, 'collected_tool_calls', None)
+                if collected_tools:
+                    return ToolCall(tool_calls=collected_tools, content=output_str)
 
                 if force_json:
                     try:

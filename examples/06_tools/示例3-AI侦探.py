@@ -146,12 +146,13 @@ async def run_detective_session(user_objective: str):
         response = await prompt.acall(
             query=user_objective if current_turn == 1 else None,
             tools=registry.get_openai_tools_schema(),
+            is_stream=True,
             system_prompt='如果证据不足，继续调用工具搜查；如果证据确凿，请调用 submit_arrest_warrant。'
         )
 
         mm = prompt.get_memory()
 
-        if response:
+        if not isinstance(response, str):
             tool_calls = response
             print(f"🟡 [侦探思维 - 决定行动]:")
 
