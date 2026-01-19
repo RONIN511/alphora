@@ -38,6 +38,7 @@ class MarketSimulation:
     def get_equity(self):
         return self.cash + (self.holdings * self.stock_price)
 
+
 # 初始化单例
 SIM = MarketSimulation()
 

@@ -50,6 +50,7 @@ class BaseAgent(object):
                  callback: Optional[DataStreamer] = None,
                  debugger: bool = False,
                  debugger_port: int = 9527,
+                 config: Optional[Dict[str, Any]] = None,
                  **kwargs):
 
         self.callback = callback
@@ -63,12 +64,15 @@ class BaseAgent(object):
         self.llm = llm
 
         # Agent配置字典，会继承给派生智能体
-        self.config: Dict[str, Any] = {}
+        # self.config: Dict[str, Any] = {}
+        self.config: Dict[str, Any] = config if config is not None else {}
 
         self.stream = Stream(callback=self.callback)
 
         self.init_params = {
             "llm": self.llm,
+            "memory": self.memory,
+            "config": self.config,
             **kwargs
         }
 
@@ -93,8 +97,19 @@ class BaseAgent(object):
         """获取指定配置项的值"""
         if not isinstance(key, str):
             raise TypeError("Parameter 'key' must be a string.")
+
         if key not in self.config:
-            raise ValueError(f'{key} does not exist.')
+            from difflib import get_close_matches
+            similar = get_close_matches(key, self.config.keys(), n=1, cutoff=0.6)
+            if similar:
+                raise KeyError(
+                    f"Config '{key}' not found. Did you mean '{similar[0]}'?"
+                )
+            else:
+                available = list(self.config.keys())
+                raise KeyError(
+                    f"Config '{key}' not found. Available: {available}"
+                )
         return self.config.get(key)
 
     def _reinitialize(self, **new_kwargs) -> None:
@@ -119,7 +134,8 @@ class BaseAgent(object):
 
     def derive(self, agent_cls_or_instance: Union[Type[T], T], **kwargs) -> T:
         """从当前 agent 派生出一个新的 agent 实例"""
-        override_params = {**self.init_params, **kwargs}
+
+        override_params = {**self.init_params, **kwargs, 'config': self.config}
 
         if isinstance(agent_cls_or_instance, type) and issubclass(agent_cls_or_instance, BaseAgent):
             derived_agent = agent_cls_or_instance(**override_params, callback=self.callback)
@@ -130,6 +146,8 @@ class BaseAgent(object):
         elif isinstance(agent_cls_or_instance, BaseAgent):
             agent_cls_or_instance._reinitialize(**override_params)
             agent_cls_or_instance.callback = self.callback
+
+            agent_cls_or_instance.config = self.config
 
             tracer.track_agent_derived(self, agent_cls_or_instance)
 

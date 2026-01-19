@@ -65,6 +65,7 @@ class ToolCallAgent(BaseAgent):
         # 注册函数
         registry.register(get_system_time)
         registry.register(get_city_weather)
+        registry.register(db_service.query_user_info)
 
         tools_schema = registry.get_openai_tools_schema()
         executor = ToolExecutor(registry)
