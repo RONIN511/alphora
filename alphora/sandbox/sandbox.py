@@ -446,6 +446,7 @@ class Sandbox(BaseAgent):
             base64_content: Optional[str] = None,
             url: Optional[str] = None,
             target_file_name: Optional[str] = None,
+            auto_description: bool = False,
     ) -> str:
         """
         向沙箱中添加文件，支持以下任一方式：
@@ -462,6 +463,7 @@ class Sandbox(BaseAgent):
             target_file_name: 沙箱内的目标文件名（含后缀）。若未提供，
                               将尝试从 source_path 或 url 自动推导；
                               使用 base64_content 时必须显式指定。
+            auto_description: 描述文件
 
         Returns:
             文件的描述信息（description）
@@ -532,12 +534,16 @@ class Sandbox(BaseAgent):
             logging.info(f"文件已添加到沙箱: {target_path}")
 
             # 自动生成描述
-            file_info = await FileReaderFactory(**self.init_params).aread_file(file_path=target_path)
-            description = file_info.get("description", "")
-            if description:
-                FileReader.save_description(target_path, description)
+            if auto_description:
+                file_info = await FileReaderFactory(**self.init_params).aread_file(file_path=target_path)
+                description = file_info.get("description", "")
+                if description:
+                    FileReader.save_description(target_path, description)
 
-            return description
+                return description
+
+            else:
+                return ""
 
         except Exception as e:
             # 清理可能残留的文件
@@ -551,6 +557,7 @@ class Sandbox(BaseAgent):
             base64_content: Optional[str] = None,
             url: Optional[str] = None,
             target_file_name: Optional[str] = None,
+            auto_description: bool = False,
     ) -> str:
         """
         向沙箱中添加文件，支持以下任一方式：
@@ -567,7 +574,7 @@ class Sandbox(BaseAgent):
             target_file_name: 沙箱内的目标文件名（含后缀）。若未提供，
                               将尝试从 source_path 或 url 自动推导；
                               使用 base64_content 时必须显式指定。
-
+            auto_description: 自动描述
         Returns:
             文件的描述信息（description）
         """
@@ -637,12 +644,15 @@ class Sandbox(BaseAgent):
             logging.info(f"文件已添加到沙箱: {target_path}")
 
             # 自动生成描述
-            file_info = FileReaderFactory(**self.init_params).read_file(file_path=target_path)
-            description = file_info.get("description", "")
-            if description:
-                FileReader.save_description(target_path, description)
+            if auto_description:
+                file_info = FileReaderFactory(**self.init_params).read_file(file_path=target_path)
+                description = file_info.get("description", "")
+                if description:
+                    FileReader.save_description(target_path, description)
 
-            return description
+                return description
+            else:
+                return ""
 
         except Exception as e:
             # 清理可能残留的文件
