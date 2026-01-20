@@ -6,13 +6,13 @@ from .exceptions import ToolRegistrationError
 
 class ToolRegistry:
     """
-    工具注册中心。
+    工具注册中心
     负责管理所有的 Tool 实例，处理命名冲突，并生成聚合的 OpenAI Tools Schema。
     """
     def __init__(self):
         # 使用字典存储，key=tool_name
         self._tools: Dict[str, Tool] = {}
-        # 简单的线程锁，防止并发注册时的竞争条件（虽然 Python GIL 存在，但在 web 框架启动时通常是单线程，加上是个好习惯）
+        # 简单的线程锁，防止并发注册时的竞争条件
         self._lock = threading.RLock()
 
     def register(
@@ -21,11 +21,11 @@ class ToolRegistry:
             name_override: Optional[str] = None
     ) -> Tool:
         """
-        核心注册方法。
+        核心注册方法
 
         Args:
             tool_or_func: 可以是一个已经封装好的 Tool 对象，也可以是一个原生函数/方法。
-            name_override: 强制重命名工具（用于解决重名问题）。
+            name_override: 强制重命名工具（用于解决重名问题）
         """
         with self._lock:
             # 1. 统一转换为 Tool 对象
@@ -70,5 +70,6 @@ class ToolRegistry:
         with self._lock:
             self._tools.clear()
 
-# 全局可选的默认注册表（便于简单脚本使用）
+
+# 全局可选的默认注册表
 default_registry = ToolRegistry()

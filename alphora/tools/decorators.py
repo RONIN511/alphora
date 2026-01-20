@@ -9,7 +9,7 @@ def tool(
         args_schema: Optional[Type[BaseModel]] = None
 ):
     """
-    智能装饰器：支持多种调用方式。
+    装饰器：支持多种调用方式
     1. @tool
     2. @tool("my_tool")
     3. @tool(name="my_tool", description="...")

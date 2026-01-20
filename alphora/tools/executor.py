@@ -50,10 +50,10 @@ class ToolExecutor:
             memory_id: str = "default",
     ) -> List[Dict[str, Any]]:
         """
-        全自动执行工具。
+        全自动执行工具
 
         功能：
-        1. 自动补全历史：如果记忆里没有这条 ToolCall 记录，自动帮你伪造一条 Assistant 消息存进去。
+        1. 自动补全历史：如果记忆里没有这条 ToolCall 记录，自动伪造一条 Assistant 消息存进去
         2. 自动执行：并行运行所有工具。
         3. 自动存档：把运行结果存回记忆。
 
@@ -71,7 +71,7 @@ class ToolExecutor:
         for call in calls_list:
             normalized_calls.append(call)
 
-        # === 步骤 1: 自动补全 Input (Assistant Message) ===
+        # 自动补全 Input (Assistant Message)
         if memory_manager:
             self._ensure_assistant_entry(
                 memory_manager,
@@ -79,13 +79,13 @@ class ToolExecutor:
                 normalized_calls,
             )
 
-        # === 步骤 2: 并行执行 (Execution) ===
+        # 并行执行 (Execution)
         tasks = [self._execute_single_tool(call) for call in normalized_calls]
         results_objects: List[ToolExecutionResult] = await asyncio.gather(*tasks)
 
         results_messages = [res.to_openai_message() for res in results_objects]
 
-        # === 步骤 3: 自动保存 Output (Tool Message) ===
+        #  自动保存 Output (Tool Message)
         if memory_manager:
             self._auto_save_results(memory_manager, memory_id, results_messages)
 
@@ -98,9 +98,7 @@ class ToolExecutor:
             tool_calls: List[Dict[str, Any]],
 
     ):
-        """
-        [内部方法] 检查记忆完整性，如果缺 Assistant 记录，直接自动补全。
-        """
+        """检查记忆完整性，如果缺 Assistant 记录，直接自动补全。"""
         # 1. 检查是否已经存在 (避免重复存储)
         # 获取最近几条记忆来比对 ID
         recent_memories = memory_manager.get_memories(memory_id)[-5:]
@@ -113,7 +111,7 @@ class ToolExecutor:
                         existing_ids.add(tc["id"])
 
         # 检查当前这批 calls 是否都在记忆里了
-        # 只要发现有一个 ID 没在记忆里，我们就认为这一整批都需要补全 (通常一批是一起发的)
+        # 只要发现有一个 ID 没在记忆里，就认为这一整批都需要补全
         needs_save = False
         for call in tool_calls:
             if call.get("id") not in existing_ids:
@@ -123,7 +121,7 @@ class ToolExecutor:
         if not needs_save:
             return    # 记忆是完美的，无需操作
 
-        # 2. 构造 Assistant 消息并保存
+        # 构造 Assistant 消息并保存
         logger.info(f"Auto-saving missing Assistant ToolCall entry to memory '{memory_id}'")
 
         assistant_payload = {
@@ -140,13 +138,13 @@ class ToolExecutor:
             memory_id: str,
             results: List[Dict[str, Any]]
     ):
-        """[内部方法] 自动写入结果"""
+        """自动写入结果"""
         for msg in results:
             memory_manager.add_payload(msg, memory_id=memory_id)
 
     async def _execute_single_tool(self, tool_call: Dict[str, Any]) -> ToolExecutionResult:
         """
-        执行单个工具调用，包含完整的错误边界处理。
+        执行单个工具调用
         """
         call_id = tool_call.get("id")
         function_data = tool_call.get("function", {})
@@ -183,7 +181,7 @@ class ToolExecutor:
                 )
 
             # 3. 执行工具 (Tool.arun 内部处理了 Pydantic 验证和 Sync/Async 桥接)
-            # 注意：如果工具是 sync 的，arun 会自动在线程池运行，不会阻塞
+            # 如果工具是 sync 的，arun 会自动在线程池运行，不会阻塞
             result_data = await tool.arun(**arguments)
 
             # 4. 序列化结果

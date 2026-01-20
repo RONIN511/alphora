@@ -8,7 +8,7 @@ from .exceptions import ToolValidationError, ToolExecutionError
 
 class Tool(BaseModel):
     """
-    企业级工具包装器。
+    工具包装器
 
     Attributes:
         name: 工具名称（大模型调用的唯一标识）。
@@ -126,7 +126,7 @@ class Tool(BaseModel):
             raise ToolValidationError("Tool input should be a dictionary, not string.")
 
         try:
-            # 使用 Pydantic 进行验证和类型转换 (这是最强的地方)
+            # 使用 Pydantic 进行验证和类型转换
             # 例如：如果模型需要 int，大模型传了 "10"，这里会自动转为 10
             validated_model = self.args_schema(**tool_input)
             return validated_model.model_dump()
@@ -151,7 +151,7 @@ class Tool(BaseModel):
         """异步执行入口"""
         if not self.is_async:
             # 如果是同步函数被异步调用，使用 run_in_executor 防止阻塞 EventLoop
-            # 这是一个非常重要的健壮性设计
+            # 非常重要
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, lambda: self.run(**kwargs))
 
