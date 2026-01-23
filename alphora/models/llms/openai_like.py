@@ -103,9 +103,12 @@ class OpenAILike(BaseLLM):
 
         messages = []
         sys_prompt = system_prompt or self.system_prompt
+
         if sys_prompt:
             messages.append({"role": "system", "content": sys_prompt})
+
         messages.append(message.to_openai_format(role="user"))
+
         return messages
 
     def _get_tracer(self):

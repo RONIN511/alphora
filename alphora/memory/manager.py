@@ -1,889 +1,1186 @@
 """
-记忆管理器
+记忆管理器 (重构版)
 
-统一的记忆管理入口，协调各类记忆，提供简洁的API
+统一的对话历史管理入口，提供简洁、开发者友好的API。
+
+重构要点:
+- 移除自动记忆功能，由开发者在 workflow 中手动添加
+- build_history() 返回 HistoryPayload，用于传入 BasePrompt
+- 添加工具调用链完整性验证
+
+特性:
+- 标准 OpenAI 消息格式
+- 完整工具调用链路支持（带验证）
+- 多会话管理
+- 历史压缩与清理
+- 撤销/重做支持
+- 多种存储后端
 """
 
-from typing import List, Optional, Dict, Any, Union, Literal
-import time
-import asyncio
-import logging
+from typing import Any, Dict, List, Optional, Union, Literal, Callable, Tuple, Set
 from pathlib import Path
+import time
+import json
+import logging
+import copy
 
-from alphora.memory.memory_unit import (
-    MemoryUnit,
-    MemoryType,
-    create_memory,
-    extract_keywords
+from alphora.memory.message import Message, MessageRole, ToolCall
+from alphora.memory.history_payload import (
+    HistoryPayload,
+    ToolChainValidator,
+    ToolChainError,
+    is_valid_history_payload
 )
-from alphora.memory.decay import (
-    DecayStrategy,
-    get_decay_strategy,
-    LogarithmicDecay
-)
-from alphora.memory.retrieval import (
-    RetrievalStrategy,
-    RetrievalResult,
-    get_retrieval_strategy,
-    search_memories
-)
-from alphora.memory.reflection import (
-    MemoryReflector,
-    AutoReflector,
-    ReflectionResult
-)
-from alphora.storage import (
-    StorageBackend,
-    JSONStorage,
-    SQLiteStorage,
-    InMemoryStorage,
-    create_storage
-)
-
-from alphora.debugger import tracer
 
 logger = logging.getLogger(__name__)
 
 
 class MemoryManager:
     """
-    记忆管理器
+    记忆管理器 (重构版)
 
-    统一管理各类记忆，提供简洁的API接口。
+    管理对话历史，支持多会话、工具调用、历史压缩等功能。
 
-    使用示例:
+    重要变更:
+    - 不再自动记录记忆，需要开发者手动调用 add_* 方法
+    - 使用 build_history() 获取 HistoryPayload，传入 BasePrompt
+    - 工具调用链会自动验证完整性
+
+    基本用法:
     ```python
-    # 基本使用（内存存储）
+    # 创建管理器
     memory = MemoryManager()
 
-    # 使用文件存储
-    memory = MemoryManager(storage_path="./data/memory.json")
+    # 手动添加对话
+    memory.add_user("你好")
+    memory.add_assistant("你好！有什么可以帮你的？")
 
-    # 使用SQLite存储
-    memory = MemoryManager(
-        storage_path="./data/memory.db",
-        storage_type="sqlite"
-    )
+    # 获取历史用于 LLM 调用
+    history = memory.build_history(max_rounds=5)
 
-    # 启用LLM反思
-    from alphora.models import OpenAILike
-    llm = OpenAILike(...)
-    memory = MemoryManager(llm=llm, auto_reflect=True)
+    # 传入 BasePrompt
+    response = await prompt.acall(query="新问题", history=history)
 
-    # 添加记忆（兼容旧接口）
-    memory.add_memory(
-        role="user",
-        content="你好，我想了解Python",
-        memory_id="chat_001"
-    )
+    # 手动保存响应
+    memory.add_user("新问题")
+    memory.add_assistant(response)
+    ```
 
-    # 构建历史（兼容旧接口）
-    history = memory.build_history(
-        memory_id="chat_001",
-        max_round=5
-    )
+    工具调用 (手动管理):
+    ```python
+    # 1. 用户输入
+    memory.add_user("北京天气怎么样？")
 
-    # 新功能：搜索记忆
-    results = memory.search("Python", memory_id="chat_001")
+    # 2. 调用 LLM
+    history = memory.build_history()
+    response = await prompt.acall(query=None, history=history, tools=tools)
 
-    # 新功能：获取反思
-    reflection = await memory.reflect(memory_id="chat_001")
+    # 3. 智能记录 assistant
+    memory.add_assistant(response)
+
+    # 4. 如果有工具调用，执行并记录
+    if getattr(response, 'has_tool_calls', False):
+        results = await executor.execute(response)
+        memory.add_tool_result(results)  # 一行搞定！
+
+        # 5. 继续对话获取最终回复
+        history = memory.build_history()
+        final_response = await prompt.acall(query=None, history=history)
+        memory.add_assistant(final_response)
     ```
     """
 
+    DEFAULT_SESSION = "default"
+
     def __init__(
             self,
-            storage: Optional[StorageBackend] = None,
             storage_path: Optional[str] = None,
-            storage_type: str = "json",
-            llm: Optional[Any] = None,
-            decay_strategy: Union[str, DecayStrategy] = "log",
-            retrieval_strategy: Union[str, RetrievalStrategy] = "hybrid",
-            auto_reflect: bool = False,
-            reflect_threshold: int = 20,
+            storage_type: Literal["memory", "json", "sqlite"] = "memory",
             auto_save: bool = True,
-            auto_extract_tags: bool = True
+            max_messages: Optional[int] = None,
+            enable_undo: bool = True,
+            undo_limit: int = 50,
     ):
         """
         Args:
-            storage: 存储后端实例（优先使用）
-            storage_path: 存储路径（如果storage为None则创建）
-            storage_type: 存储类型 (json/sqlite/memory)
-            llm: LLM实例，用于反思功能
-            decay_strategy: 衰减策略名称或实例
-            retrieval_strategy: 检索策略名称或实例
-            auto_reflect: 是否自动反思
-            reflect_threshold: 反思阈值
-            auto_save: 是否自动保存
-            auto_extract_tags: 是否自动提取标签
+            storage_path: 持久化存储路径 (memory 类型不需要)
+            storage_type: 存储类型
+                - "memory": 内存存储 (默认，进程结束后丢失)
+                - "json": JSON 文件存储
+                - "sqlite": SQLite 数据库存储
+            auto_save: 是否自动保存 (仅对持久化存储有效)
+            max_messages: 每个会话的最大消息数 (超出时自动压缩)
+            enable_undo: 是否启用撤销功能
+            undo_limit: 撤销历史最大数量
         """
-        # 初始化存储
-        if storage is not None:
-            self._storage = storage
-        elif storage_path:
-            self._storage = create_storage(storage_type, storage_path)
-        else:
-            self._storage = InMemoryStorage()
-
-        # 初始化策略
-        if isinstance(decay_strategy, str):
-            self._decay_strategy = get_decay_strategy(decay_strategy)
-        else:
-            self._decay_strategy = decay_strategy
-
-        if isinstance(retrieval_strategy, str):
-            self._retrieval_strategy = get_retrieval_strategy(retrieval_strategy)
-        else:
-            self._retrieval_strategy = retrieval_strategy
-
-        # LLM和反思
-        self._llm = llm
-        self._reflector = MemoryReflector(llm) if llm else None
-        self._auto_reflector = AutoReflector(
-            self._reflector,
-            threshold=reflect_threshold
-        ) if llm and auto_reflect else None
-
-        # 配置
+        self._storage_type = storage_type
+        self._storage_path = storage_path
         self._auto_save = auto_save
-        self._auto_extract_tags = auto_extract_tags
-        self._storage_type = storage_type if storage_path else "memory"  # 保存存储类型
+        self._max_messages = max_messages
+        self._enable_undo = enable_undo
+        self._undo_limit = undo_limit
 
-        # 内存缓存（用于快速访问）
-        self._cache: Dict[str, List[MemoryUnit]] = {}
-        self._turn_counter: Dict[str, int] = {}
+        # 初始化存储
+        self._storage = self._create_storage(storage_type, storage_path)
+
+        # 内存缓存: session_id -> List[Message]
+        self._cache: Dict[str, List[Message]] = {}
+
+        # 撤销/重做栈: session_id -> (undo_stack, redo_stack)
+        self._undo_stacks: Dict[str, List[List[Message]]] = {}
+        self._redo_stacks: Dict[str, List[List[Message]]] = {}
 
         # 从存储加载
         self._load_from_storage()
 
-    # ==================== 存储操作 ====================
+    def _create_storage(self, storage_type: str, path: Optional[str]):
+        """创建存储后端"""
+        if storage_type == "memory":
+            from alphora.storage import InMemoryStorage
+            return InMemoryStorage()
+        elif storage_type == "json":
+            from alphora.storage import JSONStorage
+            return JSONStorage(path=path)
+        elif storage_type == "sqlite":
+            from alphora.storage import SQLiteStorage
+            return SQLiteStorage(path=path)
+        else:
+            raise ValueError(f"Unknown storage type: {storage_type}")
 
-    def _get_storage_key(self, memory_id: str) -> str:
-        """获取存储键"""
-        return f"memories:{memory_id}"
-
-    def _get_turn_key(self, memory_id: str) -> str:
-        """获取轮数计数键"""
-        return f"turns:{memory_id}"
+    def _get_storage_key(self, session_id: str) -> str:
+        """获取存储键名"""
+        return f"messages:{session_id}"
 
     def _load_from_storage(self):
         """从存储加载数据"""
-        # 获取所有记忆键
-        keys = self._storage.keys("memories:*")
-
+        keys = self._storage.keys("messages:*")
         for key in keys:
-            memory_id = key.replace("memories:", "")
-            memories_data = self._storage.lrange(key, 0, -1)
-
-            self._cache[memory_id] = [
-                MemoryUnit.from_dict(data) if isinstance(data, dict) else data
-                for data in memories_data
+            session_id = key.replace("messages:", "")
+            data_list = self._storage.lrange(key, 0, -1)
+            self._cache[session_id] = [
+                Message.from_dict(d) if isinstance(d, dict) else d
+                for d in data_list
             ]
 
-            # 加载轮数
-            turn = self._storage.get(self._get_turn_key(memory_id), 0)
-            self._turn_counter[memory_id] = turn
-
-    def _save_memory(self, memory_id: str, memory: MemoryUnit):
-        """保存单条记忆到存储"""
-        key = self._get_storage_key(memory_id)
-        self._storage.rpush(key, memory.to_dict())
-
-        if self._auto_save:
-            self._storage.save()
-
-    def _save_all(self, memory_id: str):
-        """保存所有记忆到存储"""
-        if memory_id not in self._cache:
+    def _save_session(self, session_id: str):
+        """保存指定会话到存储"""
+        if session_id not in self._cache:
             return
 
-        key = self._get_storage_key(memory_id)
-
-        # 清空并重新写入
+        key = self._get_storage_key(session_id)
         self._storage.delete(key)
-        for memory in self._cache[memory_id]:
-            self._storage.rpush(key, memory.to_dict())
 
-        # 保存轮数
-        self._storage.set(
-            self._get_turn_key(memory_id),
-            self._turn_counter.get(memory_id, 0)
-        )
+        for msg in self._cache[session_id]:
+            self._storage.rpush(key, msg.to_dict())
 
         if self._auto_save:
             self._storage.save()
 
-    def add_memory(
+    def _ensure_session(self, session_id: str):
+        """确保会话存在"""
+        if session_id not in self._cache:
+            self._cache[session_id] = []
+        if self._enable_undo:
+            if session_id not in self._undo_stacks:
+                self._undo_stacks[session_id] = []
+            if session_id not in self._redo_stacks:
+                self._redo_stacks[session_id] = []
+
+    def _save_undo_state(self, session_id: str):
+        """保存撤销状态"""
+        if not self._enable_undo:
+            return
+
+        self._ensure_session(session_id)
+
+        # 保存当前状态的深拷贝
+        current_state = [copy.deepcopy(msg) for msg in self._cache.get(session_id, [])]
+        self._undo_stacks[session_id].append(current_state)
+
+        # 限制撤销栈大小
+        if len(self._undo_stacks[session_id]) > self._undo_limit:
+            self._undo_stacks[session_id] = self._undo_stacks[session_id][-self._undo_limit:]
+
+        # 新操作清空重做栈
+        self._redo_stacks[session_id] = []
+
+    def _check_auto_compress(self, session_id: str):
+        """检查是否需要自动压缩"""
+        if self._max_messages and session_id in self._cache:
+            if len(self._cache[session_id]) > self._max_messages:
+                self.compress(session_id=session_id, keep_last=self._max_messages)
+
+    # ==================== 添加消息 API ====================
+
+    def add_user(
             self,
-            role: str,
-            content: Any,
-            memory_id: str = 'default',
-            decay_factor: float = 0.9,
-            increment: float = 0.1,
-            importance: Optional[float] = None,
-            tags: Optional[List[str]] = None,
-            metadata: Optional[Dict[str, Any]] = None,
-            memory_type: MemoryType = MemoryType.SHORT_TERM
-    ) -> str:
+            content: str,
+            session_id: str = DEFAULT_SESSION,
+            **metadata
+    ) -> Message:
         """
-        添加记忆
+        添加用户消息
 
         Args:
-            role: 角色 (user/assistant/system)
-            content: 内容
-            memory_id: 记忆ID，用于区分不同的对话/Prompt
-            decay_factor: 衰减因子（兼容旧接口，但会被decay_strategy覆盖）
-            increment: 增强值
-            importance: 重要性（可选，否则使用默认值）
-            tags: 标签列表（可选，否则自动提取）
-            metadata: 元数据
-            memory_type: 记忆类型
+            content: 用户输入内容
+            session_id: 会话ID
+            **metadata: 额外元数据
 
         Returns:
-            记忆单元的唯一ID
+            创建的 Message 对象
+
+        Example:
+            memory.add_user("你好，帮我查一下天气")
         """
-        # 初始化
-        if memory_id not in self._cache:
-            self._cache[memory_id] = []
-            self._turn_counter[memory_id] = 0
+        msg = Message.user(content, **metadata)
+        return self._add_message(msg, session_id)
 
-        # 更新轮数
-        self._turn_counter[memory_id] += 1
-        current_turn = self._turn_counter[memory_id]
-
-        # 对现有记忆应用衰减
-        for idx, memory in enumerate(self._cache[memory_id]):
-            # 使用配置的衰减策略，而非简单的decay_factor
-            memory_turn = idx + 1  # 假设按顺序添加
-            self._decay_strategy.apply(memory, current_turn, memory_turn)
-
-        # 创建新记忆
-        new_memory = create_memory(
-            role=role,
-            content=content,
-            importance=importance or 0.5,
-            tags=tags,
-            metadata=metadata,
-            memory_type=memory_type,
-            auto_extract_tags=self._auto_extract_tags and tags is None
-        )
-
-        # 增强新记忆
-        new_memory.reinforce(increment)
-
-        # 添加到缓存
-        self._cache[memory_id].append(new_memory)
-
-        # 保存到存储
-        self._save_memory(memory_id, new_memory)
-
-        # 触发自动反思（异步）
-        if self._auto_reflector:
-            asyncio.create_task(
-                self._auto_reflector.maybe_reflect(
-                    self._cache[memory_id],
-                    memory_id
-                )
-            )
-
-        # 加入跟踪
-        if tracer.enabled:
-            tracer.track_memory_add(memory_id=memory_id, role=role, content=content)
-
-        return new_memory.unique_id
-
-    def add_payload(
+    def add_assistant(
             self,
-            payload: Dict[str, Any],
-            memory_id: str = 'default',
-            importance: Optional[float] = None,
-            tags: Optional[List[str]] = None,
-            metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
+            content: Optional[Union[str, Any]] = None,
+            tool_calls: Optional[List[Union[Dict, ToolCall]]] = None,
+            session_id: str = DEFAULT_SESSION,
+            **metadata
+    ) -> Message:
         """
-        添加原始消息负载（用于支持 Tool Calls 等复杂结构）
+        添加助手消息 (智能识别响应类型)
+
+        支持直接传入 LLM 响应对象，自动判断是工具调用还是普通回复。
 
         Args:
-            payload: 完整的消息对象，例如:
-                     {'role': 'assistant', 'tool_calls': [...]}
-                     或
-                     {'role': 'tool', 'tool_call_id': '...', 'content': '...'}
-            memory_id: 记忆ID
-            importance: 重要性
-            tags: 标签
-            metadata: 元数据
+            content: 回复内容，支持以下类型:
+                - str: 普通文本回复
+                - PrompterOutput: 普通文本回复 (会自动转为 str)
+                - ToolCall 对象: 自动提取 tool_calls 和 content
+                - None: 仅当有 tool_calls 参数时使用
+            tool_calls: 工具调用列表 (可选，如果 content 是 ToolCall 则自动提取)
+            session_id: 会话ID
+            **metadata: 额外元数据
+
+        Returns:
+            创建的 Message 对象
+
+        Example:
+            # 方式 1: 直接传入 LLM 响应 (推荐)
+            response = await prompt.acall(query="你好", tools=tools)
+            memory.add_assistant(response)  # 自动判断类型
+
+            # 方式 2: 普通文本回复
+            memory.add_assistant("你好！有什么可以帮你的？")
+
+            # 方式 3: 显式工具调用
+            memory.add_assistant(tool_calls=[
+                {"id": "call_1", "type": "function", "function": {"name": "search", "arguments": '{"q": "天气"}'}}
+            ])
         """
-        if memory_id not in self._cache:
-            self._cache[memory_id] = []
-            self._turn_counter[memory_id] = 0
+        actual_content = content
+        actual_tool_calls = tool_calls
 
-        self._turn_counter[memory_id] += 1
-        current_turn = self._turn_counter[memory_id]
+        # 智能识别 ToolCall 对象 (继承自 list，有 tool_calls 属性)
+        # 检查方式: 是 list 且有 content 属性 (ToolCall 的特征)
+        if isinstance(content, list) and hasattr(content, 'content'):
+            tc_obj = content
+            if len(tc_obj) > 0:
+                # 有工具调用
+                actual_tool_calls = list(tc_obj)  # ToolCall 本身就是列表
+                actual_content = tc_obj.content
+            else:
+                # 没有工具调用，使用 content 属性
+                actual_content = tc_obj.content or str(tc_obj) if tc_obj.content else None
+                actual_tool_calls = None
+        elif content is not None and not isinstance(content, str):
+            # 其他非字符串类型 (如 PrompterOutput)，转为字符串
+            actual_content = str(content)
 
-        # 衰减旧记忆
-        for idx, memory in enumerate(self._cache[memory_id]):
-            memory_turn = idx + 1
-            self._decay_strategy.apply(memory, current_turn, memory_turn)
+        msg = Message.assistant(actual_content, actual_tool_calls, **metadata)
+        return self._add_message(msg, session_id)
 
-        # 自动提取标签逻辑：如果是工具调用，提取函数名作为标签
-        extracted_tags = tags or []
-        if self._auto_extract_tags and not tags:
-            # 尝试从文本内容提取
-            content_str = payload.get("content")
-            if content_str and isinstance(content_str, str):
-                extracted_tags = extract_keywords(content_str, top_n=5)
+    def add_tool_result(
+            self,
+            result: Optional[Union["ToolExecutionResult", List["ToolExecutionResult"], Any]] = None,
+            tool_call_id: Optional[str] = None,
+            name: Optional[str] = None,
+            content: Optional[Union[str, Dict, Any]] = None,
+            session_id: str = DEFAULT_SESSION,
+            **metadata
+    ) -> Union[Message, List[Message]]:
+        """
+        添加工具执行结果 (智能识别)
 
-            # 尝试从工具调用中提取函数名
-            if "tool_calls" in payload:
-                for tool in payload["tool_calls"]:
-                    func_name = tool.get("function", {}).get("name")
-                    if func_name:
-                        extracted_tags.append(f"call:{func_name}")
+        支持多种调用方式，可直接传入 executor.execute() 的结果。
 
-        new_memory = MemoryUnit(
-            content=payload,  # 直接存字典
-            importance=importance or 0.5,
-            tags=extracted_tags,
-            metadata=metadata or {},
-            memory_type=MemoryType.SHORT_TERM
-        )
+        Args:
+            result: 工具执行结果，支持:
+                - ToolExecutionResult: 单个结果
+                - List[ToolExecutionResult]: 多个结果 (批量添加)
+            tool_call_id: 工具调用ID (传统方式)
+            name: 工具名称 (传统方式)
+            content: 执行结果内容 (传统方式)
+            session_id: 会话ID
+            **metadata: 额外元数据
 
-        # 增强新记忆
-        new_memory.reinforce(0.1)
+        Returns:
+            创建的 Message 对象 (批量时返回列表)
 
-        # 添加到缓存和存储
-        self._cache[memory_id].append(new_memory)
-        self._save_memory(memory_id, new_memory)
+        Example:
+            # 方式 1: 直接传入 executor 结果 (推荐)
+            results = await executor.execute(response.tool_calls)
+            memory.add_tool_result(results)
 
-        # 触发反思
-        if self._auto_reflector:
-            asyncio.create_task(
-                self._auto_reflector.maybe_reflect(
-                    self._cache[memory_id],
-                    memory_id
+            # 方式 2: 传入单个结果
+            result = await executor.execute_single(tool_call)
+            memory.add_tool_result(result)
+
+            # 方式 3: 传统方式
+            memory.add_tool_result(
+                tool_call_id="call_123",
+                name="get_weather",
+                content={"city": "北京", "weather": "晴"}
+            )
+        """
+        # 方式 1: 传入 ToolExecutionResult 列表
+        if isinstance(result, list):
+            messages = []
+            for r in result:
+                msg = self._add_single_tool_result(
+                    tool_call_id=r.tool_call_id,
+                    name=r.tool_name,
+                    content=r.content,
+                    session_id=session_id,
+                    **metadata
                 )
+                messages.append(msg)
+            return messages
+
+        # 方式 2: 传入单个 ToolExecutionResult
+        if result is not None and hasattr(result, 'tool_call_id'):
+            return self._add_single_tool_result(
+                tool_call_id=result.tool_call_id,
+                name=result.tool_name,
+                content=result.content,
+                session_id=session_id,
+                **metadata
             )
 
-        return new_memory.unique_id
+        # 方式 3: 传统参数方式
+        if tool_call_id is not None:
+            return self._add_single_tool_result(
+                tool_call_id=tool_call_id,
+                name=name,
+                content=content,
+                session_id=session_id,
+                **metadata
+            )
+
+        raise ValueError(
+            "add_tool_result requires either 'result' (ToolExecutionResult) "
+            "or 'tool_call_id', 'name', 'content' parameters"
+        )
+
+    def _add_single_tool_result(
+            self,
+            tool_call_id: str,
+            name: str,
+            content: Union[str, Dict, Any],
+            session_id: str = DEFAULT_SESSION,
+            **metadata
+    ) -> Message:
+        """添加单个工具结果 (内部方法)"""
+        # 验证 tool_call_id 是否存在
+        if not self._validate_tool_call_id(session_id, tool_call_id):
+            logger.warning(
+                f"tool_call_id '{tool_call_id}' not found in session '{session_id}'. "
+                "This may cause tool chain validation to fail."
+            )
+
+        # 自动序列化非字符串内容
+        if not isinstance(content, str):
+            content = json.dumps(content, ensure_ascii=False)
+
+        msg = Message.tool(tool_call_id, content, name, **metadata)
+        return self._add_message(msg, session_id)
+
+    def _validate_tool_call_id(self, session_id: str, tool_call_id: str) -> bool:
+        """验证 tool_call_id 是否存在于历史中"""
+        messages = self._cache.get(session_id, [])
+        for msg in messages:
+            if msg.has_tool_calls:
+                for tc in msg.tool_calls:
+                    if tc.id == tool_call_id:
+                        return True
+        return False
+
+    def add_system(
+            self,
+            content: str,
+            session_id: str = DEFAULT_SESSION,
+            **metadata
+    ) -> Message:
+        """
+        添加系统消息
+
+        Args:
+            content: 系统指令内容
+            session_id: 会话ID
+            **metadata: 额外元数据
+
+        Returns:
+            创建的 Message 对象
+
+        Example:
+            memory.add_system("你是一个友好的助手。")
+        """
+        msg = Message.system(content, **metadata)
+        return self._add_message(msg, session_id)
+
+    def add_message(
+            self,
+            message: Union[Message, Dict],
+            session_id: str = DEFAULT_SESSION
+    ) -> Message:
+        """
+        添加原始消息
+
+        支持 Message 对象或 OpenAI 格式的 dict。
+
+        Args:
+            message: 消息对象或字典
+            session_id: 会话ID
+
+        Returns:
+            添加的 Message 对象
+
+        Example:
+            # 从 LLM 响应直接添加
+            memory.add_message(response.choices[0].message.model_dump())
+        """
+        if isinstance(message, dict):
+            message = Message.from_openai_format(message)
+        return self._add_message(message, session_id)
+
+    def add_messages(
+            self,
+            messages: List[Union[Message, Dict]],
+            session_id: str = DEFAULT_SESSION
+    ) -> List[Message]:
+        """
+        批量添加消息
+
+        Args:
+            messages: 消息列表
+            session_id: 会话ID
+
+        Returns:
+            添加的 Message 对象列表
+        """
+        result = []
+        for msg in messages:
+            result.append(self.add_message(msg, session_id))
+        return result
+
+    def _add_message(self, message: Message, session_id: str) -> Message:
+        """内部添加消息方法"""
+        self._ensure_session(session_id)
+        self._save_undo_state(session_id)
+
+        self._cache[session_id].append(message)
+        self._check_auto_compress(session_id)
+        self._save_session(session_id)
+
+        return message
+
+    # ==================== 获取消息 API ====================
+
+    def get_messages(
+            self,
+            session_id: str = DEFAULT_SESSION,
+            limit: Optional[int] = None,
+            offset: int = 0,
+            role: Optional[str] = None
+    ) -> List[Message]:
+        """
+        获取消息列表
+
+        Args:
+            session_id: 会话ID
+            limit: 返回数量限制
+            offset: 偏移量 (从末尾算起)
+            role: 筛选角色 (user/assistant/tool/system)
+
+        Returns:
+            Message 列表
+
+        Example:
+            # 获取所有消息
+            messages = memory.get_messages()
+
+            # 获取最后5条
+            messages = memory.get_messages(limit=5)
+
+            # 只获取用户消息
+            messages = memory.get_messages(role="user")
+        """
+        messages = self._cache.get(session_id, [])
+
+        # 角色过滤
+        if role:
+            messages = [m for m in messages if m.role == role]
+
+        # 偏移和限制
+        if offset:
+            messages = messages[:-offset] if offset < len(messages) else []
+
+        if limit:
+            messages = messages[-limit:]
+
+        return messages
+
+    def get_last_message(
+            self,
+            session_id: str = DEFAULT_SESSION,
+            role: Optional[str] = None
+    ) -> Optional[Message]:
+        """
+        获取最后一条消息
+
+        Args:
+            session_id: 会话ID
+            role: 筛选角色
+
+        Returns:
+            最后一条 Message，不存在返回 None
+        """
+        messages = self.get_messages(session_id, role=role)
+        return messages[-1] if messages else None
+
+    def get_message_by_id(
+            self,
+            message_id: str,
+            session_id: str = DEFAULT_SESSION
+    ) -> Optional[Message]:
+        """根据消息ID获取消息"""
+        for msg in self._cache.get(session_id, []):
+            if msg.id == message_id:
+                return msg
+        return None
+
+    # ==================== 核心: 构建历史 API ====================
 
     def build_history(
             self,
-            memory_id: str = "default",
-            max_length: Optional[int] = None,
-            max_round: int = 5,
-            include_timestamp: bool = True,
-            # 新增可选参数
-            include_reflections: bool = True,
-            query: Optional[str] = None,
-            format: Literal["text", "messages"] = "text",
-            min_score: float = 0.0
-    ) -> Union[str, List[Dict[str, str]]]:
+            session_id: str = DEFAULT_SESSION,
+            max_rounds: Optional[int] = None,
+            max_messages: Optional[int] = None,
+            include_system: bool = False,
+            validate_tool_chain: bool = True,
+    ) -> HistoryPayload:
         """
-        构建历史对话
+        构建历史记录载荷 (用于传入 BasePrompt)
+
+        这是获取历史记录的推荐方式。返回的 HistoryPayload 对象
+        包含验证信息，可以安全地传入 BasePrompt.call/acall。
 
         Args:
-            memory_id: 记忆ID
-            max_length: 最大字符长度
-            max_round: 最大轮数
-            include_timestamp: 是否包含时间戳
-            include_reflections: 是否包含反思记忆
-            query: 如果提供，则按相关性检索
-            format: 输出格式 (text/messages)
-            min_score: 最小分数阈值
+            session_id: 会话ID
+            max_rounds: 最大对话轮数 (一问一答算一轮)
+            max_messages: 最大消息数
+            include_system: 是否包含历史中的 system 消息
+            validate_tool_chain: 是否验证工具调用链完整性
 
         Returns:
-            格式化的历史字符串或消息列表
+            HistoryPayload 对象
+
+        Raises:
+            ToolChainError: 如果工具调用链不完整
+
+        Example:
+            # 获取最近 5 轮对话
+            history = memory.build_history(max_rounds=5)
+
+            # 传入 BasePrompt
+            response = await prompt.acall(query="你好", history=history)
         """
-        memories = self.get_memories(memory_id)
+        messages = self._cache.get(session_id, [])
 
-        if not memories:
-            return "" if format == "text" else []
+        # 过滤 system 消息 (如果不需要)
+        if not include_system:
+            messages = [m for m in messages if m.role != "system"]
 
-        # 过滤低分记忆
-        if min_score > 0:
-            memories = [m for m in memories if m.score >= min_score]
+        # 按轮数限制
+        if max_rounds:
+            messages = self._limit_by_rounds(messages, max_rounds)
 
-        # 如果有查询，按相关性检索
-        if query:
-            results = self._retrieval_strategy.search(
-                query, memories, top_k=max_round * 2
-            )
-            memories = [r.memory for r in results]
-        else:
-            # 否则按分数排序取top
-            memories = self.get_top_memories(memory_id, top_n=max_round * 2)
+        # 按消息数限制
+        if max_messages and len(messages) > max_messages:
+            messages = messages[-max_messages:]
 
-        # 按时间排序
-        memories = sorted(memories, key=lambda m: m.timestamp)
+        # 转换为 OpenAI 格式
+        openai_messages = [m.to_openai_format() for m in messages]
 
-        # 过滤反思记忆（如果不需要）
-        if not include_reflections:
-            memories = [
-                m for m in memories
-                if m.memory_type != MemoryType.REFLECTION
-            ]
+        # 计算轮数
+        round_count = sum(1 for m in messages if m.role == "user")
 
-        # 限制数量
-        if len(memories) > max_round * 2:
-            memories = memories[-max_round * 2:]
+        # 创建 HistoryPayload (内部会验证工具链)
+        return HistoryPayload.create(
+            messages=openai_messages,
+            session_id=session_id,
+            round_count=round_count,
+            validate_tool_chain=validate_tool_chain
+        )
 
-        # 构建输出
-        if format == "messages":
-            return self._build_messages(memories)
-        else:
-            return self._build_text(
-                memories,
-                max_length=max_length,
-                include_timestamp=include_timestamp
-            )
-
-    def _build_text(
+    def build_history_unsafe(
             self,
-            memories: List[MemoryUnit],
-            max_length: Optional[int],
-            include_timestamp: bool
-    ) -> str:
-        """构建文本格式的历史"""
-        context = []
-        total_length = 0
-        max_length = max_length or float('inf')
+            session_id: str = DEFAULT_SESSION,
+            max_rounds: Optional[int] = None,
+            max_messages: Optional[int] = None,
+            include_system: bool = False,
+    ) -> HistoryPayload:
+        """
+        构建历史记录载荷 (不验证工具链)
 
-        for memory in memories:
-            role = memory.get_role()
-            content = memory.get_content_text()
+        警告: 仅在你确定工具链是不完整的情况下使用（例如工具调用进行中）
 
-            if include_timestamp:
-                timestamp = memory.formatted_timestamp(include_second=False)
-                line = f"[{timestamp}] % {role}: {content}\n"
+        Args:
+            session_id: 会话ID
+            max_rounds: 最大对话轮数
+            max_messages: 最大消息数
+            include_system: 是否包含历史中的 system 消息
+
+        Returns:
+            HistoryPayload 对象 (tool_chain_valid 可能为 False)
+        """
+        return self.build_history(
+            session_id=session_id,
+            max_rounds=max_rounds,
+            max_messages=max_messages,
+            include_system=include_system,
+            validate_tool_chain=False
+        )
+
+    def check_tool_chain(
+            self,
+            session_id: str = DEFAULT_SESSION
+    ) -> Tuple[bool, Optional[str], List[Dict]]:
+        """
+        检查工具调用链完整性
+
+        Returns:
+            (is_valid, error_message, incomplete_calls)
+            - is_valid: 是否完整
+            - error_message: 错误信息 (如果有)
+            - incomplete_calls: 未完成的工具调用列表
+
+        Example:
+            is_valid, error, incomplete = memory.check_tool_chain()
+            if not is_valid:
+                print(f"工具链不完整: {error}")
+                for tc in incomplete:
+                    print(f"  缺少结果: {tc['function']['name']}")
+        """
+        messages = [m.to_openai_format() for m in self._cache.get(session_id, [])]
+
+        is_valid, error_msg = ToolChainValidator.validate(messages)
+        incomplete = ToolChainValidator.find_incomplete_tool_calls(messages)
+
+        return is_valid, error_msg, incomplete
+
+    def get_pending_tool_calls(
+            self,
+            session_id: str = DEFAULT_SESSION
+    ) -> List[Dict[str, Any]]:
+        """
+        获取所有待处理的工具调用（有 tool_call 但没有对应 tool 结果）
+
+        Returns:
+            待处理的 tool_call 列表
+
+        Example:
+            pending = memory.get_pending_tool_calls()
+            for tc in pending:
+                result = await execute_tool(tc)
+                memory.add_tool_result(tc["id"], tc["function"]["name"], result)
+        """
+        messages = [m.to_openai_format() for m in self._cache.get(session_id, [])]
+        return ToolChainValidator.find_incomplete_tool_calls(messages)
+
+    # ==================== 兼容方法 (保留但标记为废弃) ====================
+
+    def build_messages(
+            self,
+            session_id: str = DEFAULT_SESSION,
+            system_prompt: Optional[Union[str, List[str]]] = None,
+            user_query: Optional[str] = None,
+            max_rounds: Optional[int] = None,
+            max_messages: Optional[int] = None,
+            include_system: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        [已废弃] 构建发送给 LLM 的消息列表
+
+        推荐使用 build_history() 代替，然后传入 BasePrompt。
+
+        此方法保留是为了向后兼容。
+        """
+        import warnings
+        warnings.warn(
+            "build_messages() is deprecated. Use build_history() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
+        result = []
+
+        # 1. 添加 system_prompt
+        if system_prompt:
+            if isinstance(system_prompt, str):
+                result.append({"role": "system", "content": system_prompt})
             else:
-                line = f"{role}: {content}\n"
+                for sp in system_prompt:
+                    result.append({"role": "system", "content": sp})
 
-            if total_length + len(line) > max_length:
-                break
+        # 2. 获取历史消息
+        history = self._get_history_for_build(
+            session_id=session_id,
+            max_rounds=max_rounds,
+            max_messages=max_messages,
+            include_system=include_system,
+        )
 
-            context.append(line)
-            total_length += len(line)
+        result.extend(history)
 
-        return "".join(context)
+        # 3. 添加当前 user_query
+        if user_query:
+            result.append({"role": "user", "content": user_query})
 
-    def _build_messages(
+        return result
+
+    def _get_history_for_build(
             self,
-            memories: List[MemoryUnit]
-    ) -> List[Dict[str, str]]:
-        """构建消息列表格式"""
-        return [memory.to_message_format() for memory in memories]
+            session_id: str,
+            max_rounds: Optional[int] = None,
+            max_messages: Optional[int] = None,
+            include_system: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """获取用于构建的历史消息 (内部方法)"""
+        messages = self._cache.get(session_id, [])
 
-    # ==================== 新增功能 ====================
+        # 过滤 system 消息 (如果不需要)
+        if not include_system:
+            messages = [m for m in messages if m.role != "system"]
 
-    def get_memories(self, memory_id: str) -> List[MemoryUnit]:
-        """获取指定ID的所有记忆"""
-        return self._cache.get(memory_id, [])
+        # 按轮数限制
+        if max_rounds:
+            messages = self._limit_by_rounds(messages, max_rounds)
 
-    def get_top_memories(
-            self,
-            memory_id: str,
-            top_n: int = 10,
-            sort_by: Literal["score", "importance", "composite", "time"] = "composite"
-    ) -> List[MemoryUnit]:
+        # 按消息数限制
+        if max_messages and len(messages) > max_messages:
+            messages = messages[-max_messages:]
+
+        return [m.to_openai_format() for m in messages]
+
+    def _limit_by_rounds(self, messages: List[Message], max_rounds: int) -> List[Message]:
         """
-        获取评分最高的记忆
+        按对话轮数限制消息
 
-        Args:
-            memory_id: 记忆ID
-            top_n: 返回数量
-            sort_by: 排序方式
+        一轮 = user + assistant (+ 可能的 tool_calls + tool)
+        从后往前数 max_rounds 轮
         """
-        memories = self.get_memories(memory_id)
-
-        if sort_by == "score":
-            key_func = lambda m: m.score
-        elif sort_by == "importance":
-            key_func = lambda m: m.importance
-        elif sort_by == "time":
-            key_func = lambda m: m.timestamp
-        else:  # composite
-            key_func = lambda m: m.get_composite_score()
-
-        return sorted(memories, key=key_func, reverse=True)[:top_n]
-
-    def search(
-            self,
-            query: str,
-            memory_id: str = "default",
-            top_k: int = 10,
-            strategy: Optional[str] = None
-    ) -> List[RetrievalResult]:
-        """
-        搜索记忆
-
-        Args:
-            query: 查询字符串
-            memory_id: 记忆ID
-            top_k: 返回数量
-            strategy: 检索策略（可选，否则使用默认策略）
-        """
-        memories = self.get_memories(memory_id)
-
-        if not memories:
+        if not messages:
             return []
 
-        if strategy:
-            retriever = get_retrieval_strategy(strategy)
-        else:
-            retriever = self._retrieval_strategy
+        # 从后往前扫描，计算轮数
+        rounds = 0
+        cut_index = 0
 
-        results = retriever.search(query, memories, top_k)
+        i = len(messages) - 1
+        while i >= 0:
+            msg = messages[i]
 
-        # 记录访问
-        for result in results:
-            result.memory.access()
+            # user 消息标志一轮的开始
+            if msg.role == "user":
+                rounds += 1
+                if rounds > max_rounds:
+                    cut_index = i + 1
+                    break
 
-        return results
+            i -= 1
 
-    def clear_memory(self, memory_id: str):
-        """清空指定ID的记忆"""
-        if memory_id in self._cache:
-            del self._cache[memory_id]
+        return messages[cut_index:]
 
-        if memory_id in self._turn_counter:
-            del self._turn_counter[memory_id]
+    # ==================== 删除/清理 API ====================
 
-        self._storage.delete(self._get_storage_key(memory_id))
-        self._storage.delete(self._get_turn_key(memory_id))
+    def delete_message(
+            self,
+            message_id: str,
+            session_id: str = DEFAULT_SESSION
+    ) -> bool:
+        """
+        删除指定消息
+
+        Args:
+            message_id: 消息ID
+            session_id: 会话ID
+
+        Returns:
+            是否删除成功
+        """
+        if session_id not in self._cache:
+            return False
+
+        self._save_undo_state(session_id)
+
+        original_len = len(self._cache[session_id])
+        self._cache[session_id] = [
+            m for m in self._cache[session_id] if m.id != message_id
+        ]
+
+        if len(self._cache[session_id]) < original_len:
+            self._save_session(session_id)
+            return True
+        return False
+
+    def delete_last(
+            self,
+            count: int = 1,
+            session_id: str = DEFAULT_SESSION
+    ) -> int:
+        """
+        删除最后 N 条消息
+
+        Args:
+            count: 删除数量
+            session_id: 会话ID
+
+        Returns:
+            实际删除的数量
+        """
+        if session_id not in self._cache:
+            return 0
+
+        self._save_undo_state(session_id)
+
+        original_len = len(self._cache[session_id])
+        self._cache[session_id] = self._cache[session_id][:-count] if count < original_len else []
+
+        deleted = original_len - len(self._cache[session_id])
+        if deleted > 0:
+            self._save_session(session_id)
+        return deleted
+
+    def delete_last_round(self, session_id: str = DEFAULT_SESSION) -> int:
+        """
+        删除最后一轮对话
+
+        一轮 = 最后一个 user 消息及其后的所有消息
+
+        Returns:
+            删除的消息数量
+
+        Example:
+            # 如果历史是: [user, assistant, user, assistant(tool_calls), tool, assistant]
+            # 调用后变为: [user, assistant]
+        """
+        messages = self._cache.get(session_id, [])
+        if not messages:
+            return 0
+
+        self._save_undo_state(session_id)
+
+        # 从后往前找最后一个 user 消息
+        cut_index = len(messages)
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].role == "user":
+                cut_index = i
+                break
+
+        deleted = len(messages) - cut_index
+        self._cache[session_id] = messages[:cut_index]
+
+        if deleted > 0:
+            self._save_session(session_id)
+        return deleted
+
+    def delete_last_tool_round(self, session_id: str = DEFAULT_SESSION) -> int:
+        """
+        删除最后一轮工具调用
+
+        包括: assistant(tool_calls) + 所有 tool 结果 + 最终 assistant 回复
+
+        Returns:
+            删除的消息数量
+
+        Example:
+            # 如果历史是: [user, assistant(tool_calls), tool, tool, assistant]
+            # 调用后变为: [user]
+        """
+        messages = self._cache.get(session_id, [])
+        if not messages:
+            return 0
+
+        self._save_undo_state(session_id)
+
+        # 从后往前找 assistant 带 tool_calls 的消息
+        cut_index = len(messages)
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].is_tool_call_request:
+                cut_index = i
+                break
+
+        deleted = len(messages) - cut_index
+        self._cache[session_id] = messages[:cut_index]
+
+        if deleted > 0:
+            self._save_session(session_id)
+        return deleted
+
+    def clear(self, session_id: str = DEFAULT_SESSION) -> int:
+        """
+        清空指定会话
+
+        Args:
+            session_id: 会话ID
+
+        Returns:
+            清空的消息数量
+        """
+        if session_id not in self._cache:
+            return 0
+
+        self._save_undo_state(session_id)
+
+        count = len(self._cache[session_id])
+        self._cache[session_id] = []
+
+        if count > 0:
+            self._save_session(session_id)
+        return count
+
+    def compress(
+            self,
+            session_id: str = DEFAULT_SESSION,
+            keep_last: Optional[int] = None,
+            keep_rounds: Optional[int] = None,
+            summarizer: Optional[Callable[[List[Message]], str]] = None
+    ) -> int:
+        """
+        压缩历史记录
+
+        Args:
+            session_id: 会话ID
+            keep_last: 保留最后 N 条消息
+            keep_rounds: 保留最后 N 轮对话
+            summarizer: 自定义摘要函数 (接收 Message 列表，返回摘要字符串)
+
+        Returns:
+            压缩掉的消息数量
+        """
+        messages = self._cache.get(session_id, [])
+        if not messages:
+            return 0
+
+        self._save_undo_state(session_id)
+
+        original_len = len(messages)
+
+        if keep_rounds:
+            messages = self._limit_by_rounds(messages, keep_rounds)
+        elif keep_last:
+            messages = messages[-keep_last:] if keep_last < len(messages) else messages
+
+        # 如果提供了 summarizer，将被删除的消息生成摘要
+        if summarizer and len(messages) < original_len:
+            removed = self._cache[session_id][:-len(messages)] if messages else self._cache[session_id]
+            summary = summarizer(removed)
+            # 将摘要作为 system 消息添加到开头
+            summary_msg = Message.system(f"[历史摘要] {summary}")
+            messages = [summary_msg] + messages
+
+        self._cache[session_id] = messages
+        self._save_session(session_id)
+
+        return original_len - len(messages)
+
+    # ==================== 撤销/重做 API ====================
+
+    def undo(self, session_id: str = DEFAULT_SESSION) -> bool:
+        """
+        撤销上一次操作
+
+        Returns:
+            是否撤销成功
+        """
+        if not self._enable_undo:
+            return False
+
+        if not self._undo_stacks.get(session_id):
+            return False
+
+        # 保存当前状态到重做栈
+        current = [copy.deepcopy(m) for m in self._cache.get(session_id, [])]
+        self._redo_stacks.setdefault(session_id, []).append(current)
+
+        # 恢复上一个状态
+        self._cache[session_id] = self._undo_stacks[session_id].pop()
+        self._save_session(session_id)
+
+        return True
+
+    def redo(self, session_id: str = DEFAULT_SESSION) -> bool:
+        """
+        重做上一次撤销的操作
+
+        Returns:
+            是否重做成功
+        """
+        if not self._enable_undo:
+            return False
+
+        if not self._redo_stacks.get(session_id):
+            return False
+
+        # 保存当前状态到撤销栈
+        current = [copy.deepcopy(m) for m in self._cache.get(session_id, [])]
+        self._undo_stacks.setdefault(session_id, []).append(current)
+
+        # 恢复重做状态
+        self._cache[session_id] = self._redo_stacks[session_id].pop()
+        self._save_session(session_id)
+
+        return True
+
+    def can_undo(self, session_id: str = DEFAULT_SESSION) -> bool:
+        """是否可以撤销"""
+        return bool(self._undo_stacks.get(session_id))
+
+    def can_redo(self, session_id: str = DEFAULT_SESSION) -> bool:
+        """是否可以重做"""
+        return bool(self._redo_stacks.get(session_id))
+
+    # ==================== 会话管理 API ====================
+
+    def list_sessions(self) -> List[str]:
+        """列出所有会话ID"""
+        return list(self._cache.keys())
+
+    def has_session(self, session_id: str) -> bool:
+        """检查会话是否存在"""
+        return session_id in self._cache and len(self._cache[session_id]) > 0
+
+    def get_session_stats(self, session_id: str = DEFAULT_SESSION) -> Dict[str, Any]:
+        """获取会话统计信息"""
+        messages = self._cache.get(session_id, [])
+
+        if not messages:
+            return {
+                "session_id": session_id,
+                "exists": False,
+                "total_messages": 0,
+            }
+
+        role_counts = {}
+        for msg in messages:
+            role_counts[msg.role] = role_counts.get(msg.role, 0) + 1
+
+        tool_call_count = sum(1 for m in messages if m.has_tool_calls)
+
+        # 检查工具链完整性
+        is_valid, _, incomplete = self.check_tool_chain(session_id)
+
+        return {
+            "session_id": session_id,
+            "exists": True,
+            "total_messages": len(messages),
+            "role_counts": role_counts,
+            "tool_call_count": tool_call_count,
+            "tool_chain_valid": is_valid,
+            "pending_tool_calls": len(incomplete),
+            "rounds": self._count_rounds(messages),
+            "first_message_time": messages[0].timestamp if messages else None,
+            "last_message_time": messages[-1].timestamp if messages else None,
+        }
+
+    def _count_rounds(self, messages: List[Message]) -> int:
+        """计算对话轮数"""
+        return sum(1 for m in messages if m.role == "user")
+
+    def delete_session(self, session_id: str) -> bool:
+        """删除整个会话"""
+        if session_id not in self._cache:
+            return False
+
+        del self._cache[session_id]
+        self._storage.delete(self._get_storage_key(session_id))
+
+        # 清理撤销栈
+        self._undo_stacks.pop(session_id, None)
+        self._redo_stacks.pop(session_id, None)
 
         if self._auto_save:
             self._storage.save()
 
-    def forget(
+        return True
+
+    def copy_session(
             self,
-            memory_id: str,
-            threshold: float = 0.1,
-            keep_important: bool = True,
-            importance_threshold: float = 0.7
-    ) -> int:
-        """
-        遗忘低分记忆
-
-        Args:
-            memory_id: 记忆ID
-            threshold: 分数阈值
-            keep_important: 是否保留重要记忆
-            importance_threshold: 重要性阈值
-
-        Returns:
-            遗忘的记忆数量
-        """
-        if memory_id not in self._cache:
-            return 0
-
-        original_count = len(self._cache[memory_id])
-
-        def should_keep(m: MemoryUnit) -> bool:
-            if m.score >= threshold:
-                return True
-            if keep_important and m.importance >= importance_threshold:
-                return True
+            from_session: str,
+            to_session: str,
+            overwrite: bool = False
+    ) -> bool:
+        """复制会话"""
+        if from_session not in self._cache:
             return False
 
-        self._cache[memory_id] = [
-            m for m in self._cache[memory_id] if should_keep(m)
-        ]
+        if to_session in self._cache and not overwrite:
+            raise ValueError(f"Session '{to_session}' already exists. Use overwrite=True to replace.")
 
-        forgotten = original_count - len(self._cache[memory_id])
+        # 深拷贝消息
+        self._cache[to_session] = [copy.deepcopy(m) for m in self._cache[from_session]]
+        self._save_session(to_session)
 
-        if forgotten > 0:
-            self._save_all(memory_id)
+        return True
 
-        return forgotten
+    # ==================== 持久化 API ====================
 
-    def is_empty(self, memory_id: str) -> bool:
-        """判断记忆是否为空"""
-        return len(self.get_memories(memory_id)) == 0
-
-    async def reflect(
-            self,
-            memory_id: str = "default",
-            force: bool = False
-    ) -> Optional[ReflectionResult]:
-        """
-        触发反思
-
-        Args:
-            memory_id: 记忆ID
-            force: 是否强制反思
-
-        Returns:
-            反思结果
-        """
-        if not self._reflector:
-            logger.warning("No LLM configured for reflection")
-            return None
-
-        memories = self.get_memories(memory_id)
-
-        if not memories:
-            return None
-
-        return await self._reflector.reflect(memories)
-
-    async def summarize(
-            self,
-            memory_id: str = "default",
-            style: str = "brief"
-    ) -> str:
-        """
-        生成摘要
-
-        Args:
-            memory_id: 记忆ID
-            style: 摘要风格
-
-        Returns:
-            摘要文本
-        """
-        if not self._reflector:
-            logger.warning("No LLM configured for summarization")
-            return ""
-
-        memories = self.get_memories(memory_id)
-        return await self._reflector.summarize(memories, style)
-
-    async def extract_key_info(
-            self,
-            memory_id: str = "default"
-    ) -> Dict[str, List[str]]:
-        """提取关键信息"""
-        if not self._reflector:
-            return {}
-
-        memories = self.get_memories(memory_id)
-        return await self._reflector.extract_key_info(memories)
-
-    # ==================== 持久化 ====================
-
-    def save(self, path: Optional[str] = None):
-        """保存到存储"""
-        for memory_id in self._cache:
-            self._save_all(memory_id)
-
+    def save(self):
+        """手动保存到存储"""
+        for session_id in self._cache:
+            self._save_session(session_id)
         self._storage.save()
 
-    def load(self, path: Optional[str] = None):
-        """从存储加载"""
+    def reload(self):
+        """从存储重新加载"""
+        self._cache.clear()
         self._load_from_storage()
 
-    def dump(self, dump_path: str):
-        """
-        导出到文件
+    def __len__(self) -> int:
+        """返回总消息数"""
+        return sum(len(msgs) for msgs in self._cache.values())
 
-        Args:
-            dump_path: 导出路径
-        """
-        import dill
-
-        with open(dump_path, 'wb') as f:
-            dill.dump(self, f)
-
-    @classmethod
-    def load_from_dump(cls, dump_path: str) -> 'MemoryManager':
-        """从dump文件加载"""
-        import dill
-
-        with open(dump_path, 'rb') as f:
-            return dill.load(f)
-
-    def list_memory_ids(self) -> List[str]:
-        """
-        列出所有记忆ID（会话ID）
-
-        Returns:
-            记忆ID列表
-        """
-        return list(self._cache.keys())
-
-    def has_memory(self, memory_id: str) -> bool:
-        """
-        检查是否存在指定的记忆ID
-
-        Args:
-            memory_id: 记忆ID
-
-        Returns:
-            是否存在
-        """
-        return memory_id in self._cache and len(self._cache[memory_id]) > 0
-
-    def get_session_summary(self, memory_id: str) -> Dict[str, Any]:
-        """
-        获取会话摘要信息（用于开发者查看）
-
-        Args:
-            memory_id: 记忆ID
-
-        Returns:
-            会话摘要
-        """
-        memories = self.get_memories(memory_id)
-        if not memories:
-            return {
-                "session_id": memory_id,
-                "exists": False,
-                "rounds": 0,
-                "total_messages": 0,
-            }
-
-        # 计算轮数（user+assistant 算一轮）
-        # content 是 Dict[str, str]，格式为 {"role": "...", "content": "..."}
-        user_count = len([m for m in memories if m.content.get('role') == "user"])
-        assistant_count = len([m for m in memories if m.content.get('role') == "assistant"])
-        rounds = min(user_count, assistant_count)
-
-        # 时间信息
-        timestamps = [m.timestamp for m in memories]
-        oldest = min(timestamps) if timestamps else None
-        newest = max(timestamps) if timestamps else None
-
-        return {
-            "session_id": memory_id,
-            "exists": True,
-            "rounds": rounds,
-            "total_messages": len(memories),
-            "user_messages": user_count,
-            "assistant_messages": assistant_count,
-            "created_at": oldest,
-            "last_active": newest,
-        }
-
-    def stats(self, memory_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        获取统计信息
-
-        Args:
-            memory_id: 记忆ID（可选，不提供则返回全局统计）
-        """
-        if memory_id:
-            memories = self.get_memories(memory_id)
-            return {
-                "memory_id": memory_id,
-                "count": len(memories),
-                "turns": self._turn_counter.get(memory_id, 0),
-                "avg_score": sum(m.score for m in memories) / len(memories) if memories else 0,
-                "avg_importance": sum(m.importance for m in memories) / len(memories) if memories else 0,
-                "types": {
-                    t.value: len([m for m in memories if m.memory_type == t])
-                    for t in MemoryType
-                },
-                "oldest": min(m.timestamp for m in memories) if memories else None,
-                "newest": max(m.timestamp for m in memories) if memories else None,
-            }
-        else:
-            return {
-                "total_memories": sum(len(m) for m in self._cache.values()),
-                "memory_ids": list(self._cache.keys()),
-                "storage_info": self._storage.info() if hasattr(self._storage, 'info') else {},
-                "decay_strategy": self._decay_strategy.name,
-                "retrieval_strategy": self._retrieval_strategy.name,
-                "has_llm": self._llm is not None,
-                "auto_reflect": self._auto_reflector is not None,
-            }
-
-    def save_to_json(self, file_path: str, memory_id: Optional[str] = None):
-        """
-        将记忆导出为标准 JSON 文件 (Human Readable)
-
-        Args:
-            file_path: 保存路径 (例如: "./dump.json")
-            memory_id: 指定导出的记忆ID（可选）。
-                       如果不填，导出所有会话的记忆。
-                       如果填了，只导出该 ID 对应的列表。
-        """
-        import json
-
-        export_data = {}
-
-        # 1. 确定要导出的 ID 列表
-        if memory_id:
-            if memory_id in self._cache:
-                target_ids = [memory_id]
-            else:
-                logger.warning(f"Memory ID {memory_id} not found, nothing to save.")
-                return
-        else:
-            target_ids = list(self._cache.keys())
-
-        # 2. 遍历并序列化
-        for mid in target_ids:
-
-            export_data[mid] = [
-                mem.to_dict() for mem in self._cache[mid]
-            ]
-
-        final_output = {
-            "meta": {
-                "exported_at": time.time(),
-                "total_sessions": len(target_ids),
-                "stats": self.stats(memory_id) if memory_id else self.stats()
-            },
-            "memories": export_data
-        }
-
-        # 4. 写入文件
-        try:
-            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-
-            with open(file_path, 'w', encoding='utf-8') as f:
-
-                json.dump(final_output, f, ensure_ascii=False, indent=4)
-
-            logger.info(f"Successfully saved memories to {file_path}")
-        except Exception as e:
-            logger.error(f"Failed to save JSON to {file_path}: {e}")
-
-    def save_history(
-            self,
-            file_path: str,
-            memory_id: str = "default",
-            format: Literal["text", "messages"] = "text",
-            max_round: int = 1000,  # 默认导出较多轮数
-            **kwargs
-    ):
-        """
-        保存对话历史（所见即所得格式）
-
-        将 build_history 生成的内容直接保存到文件。
-        这反映了 AI 在当前时刻看到的上下文状态。
-
-        Args:
-            file_path: 保存路径
-            memory_id: 记忆ID
-            format: 格式 ("text" 为纯文本对话流, "messages" 为 JSON 格式的消息列表)
-            max_round: 回溯轮数（默认 1000，通常意为导出全部）
-            **kwargs: 透传给 build_history 的其他参数 (如 include_timestamp 等)
-        """
-        # 调用 build_history 获取内容
-        content = self.build_history(
-            memory_id=memory_id,
-            max_round=max_round,
-            format=format,
-            **kwargs
-        )
-
-        # 确保目录存在
-        Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-
-        # 根据格式写入文件
-        if format == "text":
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(str(content))
-        else:
-            import json
-            with open(file_path, "w", encoding="utf-8") as f:
-                # content 在 format="messages" 时已经是 list/dict
-                json.dump(content, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"History saved to {file_path} (format={format})")
+    def __contains__(self, session_id: str) -> bool:
+        """检查会话是否存在"""
+        return self.has_session(session_id)
 
     def __repr__(self) -> str:
-        total = sum(len(m) for m in self._cache.values())
-        return f"MemoryManager(memories={total}, ids={len(self._cache)})"
+        return f"MemoryManager(sessions={len(self._cache)}, messages={len(self)}, storage={self._storage_type})"
 
+    def __str__(self) -> str:
+        lines = [
+            "=" * 50,
+            "MemoryManager Status",
+            "=" * 50,
+            f"Storage: {self._storage_type}",
+            f"Sessions: {len(self._cache)}",
+            f"Total Messages: {len(self)}",
+            "-" * 50,
+            ]
+
+        for session_id in self._cache:
+            stats = self.get_session_stats(session_id)
+            tool_status = "✓" if stats.get('tool_chain_valid', True) else f"✗ ({stats.get('pending_tool_calls', 0)} pending)"
+            lines.append(
+                f"  [{session_id}]: {stats['total_messages']} messages, "
+                f"{stats['rounds']} rounds, tools: {tool_status}"
+            )
+
+        lines.append("=" * 50)
+        return "\n".join(lines)

@@ -8,6 +8,8 @@ from alphora.models import OpenAILike
 from alphora.tools import tool, ToolRegistry, ToolExecutor
 from alphora.models.llms.types import ToolCall
 
+from alphora.memory import MemoryManager
+
 from pydantic import Field
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(message)s')
@@ -128,7 +130,6 @@ async def run_detective_session(user_objective: str):
     agent = BaseAgent(llm=llm)
     prompt = agent.create_prompt(
         system_prompt=system_prompt,
-        enable_memory=True
     )
 
     print(f"\n🕵️‍♂️ [委托人]: {user_objective}")
@@ -137,30 +138,33 @@ async def run_detective_session(user_objective: str):
     max_turns = 30
     current_turn = 0
 
+    memory = MemoryManager()
+
+    # 添加用户的输入
+    memory.add_user(content=user_objective)
+
     while current_turn < max_turns:
         current_turn += 1
+
         print(f"\n--- Round {current_turn} of Investigation ---")
 
-        # 1. 侦探思考 (LLM)
-        # 遵循你的规范：仅首轮传入 Query，后续由 Memory 驱动
         response = await prompt.acall(
-            query=user_objective if current_turn == 1 else None,
             tools=registry.get_openai_tools_schema(),
             is_stream=True,
-            system_prompt='如果证据不足，继续调用工具搜查；如果证据确凿，请调用 submit_arrest_warrant。'
+            runtime_system_prompt='如果证据不足，继续调用工具搜查；如果证据确凿，请调用 submit_arrest_warrant。',
+            history=memory.build_history()
         )
 
-        mm = prompt.get_memory()
+        memory.add_assistant(content=response)   # 添加大模型的返回（无需判断是否是工具调用）
 
-        if not isinstance(response, str):
+        if response.has_tool_calls:   # 假如有调用工具
             tool_calls = response
-            print(f"🟡 [侦探思维 - 决定行动]:")
 
-            # 2. 执行调查动作
-            execution_results = await executor.execute(tool_calls, memory_manager=mm)
+            print(f"🟡 [侦探决定行动]:\n")
+            execution_results = await executor.execute(tool_calls)
+            memory.add_tool_result(result=execution_results)    # 直接把 Executor 的输出传入记忆即可
 
-            for tc in tool_calls:
-                print(f"   🔍 正在使用技能: {tc.get('function').get('name')}")
+            print(response.format_details())   # 展示工具调用详情
 
             print(f"🟢 [现场反馈]: {execution_results}")
 
