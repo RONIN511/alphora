@@ -157,11 +157,11 @@ class Sandbox(BaseAgent):
                 continue
 
             try:
-                file_info = self.read_file(str(file_path.relative_to(sandbox_root)))
+                # file_info = self.read_file(str(file_path.relative_to(sandbox_root)))
                 resource_list.append({
                     "文件名": str(file_path.relative_to(sandbox_root)),
-                    "内容": file_info["内容"],
-                    "概要信息": file_info["概要信息"]
+                    # "内容": file_info["内容"],
+                    # "概要信息": file_info["概要信息"]
                 })
             except Exception as e:
                 logging.warning(f"获取文件资源失败: {file_path}, 错误: {e}")
