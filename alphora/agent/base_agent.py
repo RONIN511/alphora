@@ -114,30 +114,105 @@ class BaseAgent(object):
         self.__init__(**merged_params)
 
     def derive(self, agent_cls_or_instance: Union[Type[T], T], **kwargs) -> T:
-        """从当前 agent 派生出一个新的 agent 实例"""
+        """
+        从当前 agent 派生出一个新的 agent 实例。
 
-        override_params = {**self.init_params, **kwargs, 'config': self.config}
+        支持两种用法：
+        1. 传入类：derive(SomeAgentClass) - 用当前 agent 的参数创建新实例
+        2. 传入实例：derive(some_agent_instance) - 继承共享状态，保留实例特有属性
+
+        Args:
+            agent_cls_or_instance: Agent 类或实例
+            **kwargs: 额外的覆盖参数
+
+        Returns:
+            派生后的 agent 实例
+
+        示例：
+            # 方式1：传入类
+            sub_agent = self.derive(SubAgentClass)
+
+            # 方式2：传入实例（推荐用于有特殊初始化参数的子类）
+            view_agent = FileViewerAgent(base_dir="/path/to/files")
+            view_agent = self.derive(view_agent)  # base_dir 会被保留
+        """
 
         if isinstance(agent_cls_or_instance, type) and issubclass(agent_cls_or_instance, BaseAgent):
+            # 传入的是类，创建新实例
+            override_params = {**self.init_params, 'config': self.config, **kwargs}
             derived_agent = agent_cls_or_instance(**override_params, callback=self.callback)
 
             tracer.track_agent_derived(self, derived_agent)
 
             return derived_agent
+
         elif isinstance(agent_cls_or_instance, BaseAgent):
-            agent_cls_or_instance._reinitialize(**override_params)
-            agent_cls_or_instance.callback = self.callback
+            # 传入的是实例，直接替换共享属性，不重新初始化
+            instance = agent_cls_or_instance
 
-            agent_cls_or_instance.config = self.config
+            # 只替换需要从父 agent 继承的共享属性
+            instance.llm = self.llm
+            instance.memory = self.memory
+            instance.config = self.config
+            instance.callback = self.callback
+            instance.verbose = self.verbose
 
-            tracer.track_agent_derived(self, agent_cls_or_instance)
+            # 重建依赖 callback 的 stream
+            instance.stream = Stream(callback=instance.callback)
 
-            return agent_cls_or_instance
+            # 同步 init_params 中的共享部分（用于后续可能的再派生）
+            instance.init_params.update({
+                'llm': self.llm,
+                'memory': self.memory,
+                'config': self.config,
+                'verbose': self.verbose,
+            })
+
+            # 应用额外的覆盖参数
+            for key, value in kwargs.items():
+                if hasattr(instance, key):
+                    setattr(instance, key, value)
+                instance.init_params[key] = value
+
+            tracer.track_agent_derived(self, instance)
+
+            return instance
         else:
             raise TypeError(
                 f"Unsupported type: {type(agent_cls_or_instance)}. "
                 f"Expected a subclass or instance of BaseAgent."
             )
+
+    # def derive(self, agent_cls_or_instance: Union[Type[T], T], **kwargs) -> T:
+    #     """从当前 agent 派生出一个新的 agent 实例"""
+    #
+    #     override_params = {**self.init_params, **kwargs, 'config': self.config}
+    #
+    #     if isinstance(agent_cls_or_instance, type) and issubclass(agent_cls_or_instance, BaseAgent):
+    #         derived_agent = agent_cls_or_instance(**override_params, callback=self.callback)
+    #
+    #         tracer.track_agent_derived(self, derived_agent)
+    #
+    #         return derived_agent
+    #
+    #     elif isinstance(agent_cls_or_instance, BaseAgent):
+    #
+    #         merged_params = agent_cls_or_instance.__dict__.copy()
+    #         merged_params.update(override_params)
+    #         agent_cls_or_instance._reinitialize(**merged_params)
+    #         # agent_cls_or_instance._reinitialize(**override_params)
+    #         agent_cls_or_instance.callback = self.callback
+    #
+    #         agent_cls_or_instance.config = self.config
+    #
+    #         tracer.track_agent_derived(self, agent_cls_or_instance)
+    #
+    #         return agent_cls_or_instance
+    #     else:
+    #         raise TypeError(
+    #             f"Unsupported type: {type(agent_cls_or_instance)}. "
+    #             f"Expected a subclass or instance of BaseAgent."
+    #         )
 
     def create_prompt(
             self,
