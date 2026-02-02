@@ -1,14 +1,18 @@
 """
-历史记录载荷
+Immutable History Payload & Integrity Validation.
 
-定义 MemoryManager.build_history() 的返回数据结构。
-这是一个受保护的数据结构，只能由 MemoryManager 创建，
-BasePrompt 会验证其有效性后才会使用。
+This module defines the secure, immutable data structure used to transport
+conversation history between the Memory Manager and the Prompt Engine.
+It enforces strict data integrity and validates the consistency of
+tool-use interaction chains (Function Calling).
 
-设计原则:
-1. 不可变性：创建后不应被修改
-2. 可验证性：包含验证标志，防止伪造
-3. 工具链完整性：确保 tool_calls 和 tool 消息的对应关系
+Key Features:
+    1.  Immutability: Once created, the payload cannot be modified, ensuring
+        consistency across the request lifecycle.
+    2.  Integrity Verification: Uses internal cryptographic signatures to
+        detect tampering or corruption during transport.
+    3.  Tool Chain Logic: rigorous validation to ensure every `tool_call`
+        has a corresponding `tool` response, preventing LLM context errors.
 """
 
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -19,17 +23,17 @@ import json
 
 
 class ToolChainError(Exception):
-    """工具调用链错误"""
+    """Raised when an incomplete or invalid tool invocation chain is detected."""
     pass
 
 
 class ToolChainValidator:
     """
-    工具调用链验证器
+    Provides static validation logic for OpenAI-format message lists.
 
-    确保历史记录中的工具调用关系完整：
-    - 每个 assistant 消息的 tool_calls 必须有对应的 tool 消息
-    - 每个 tool 消息必须有对应的 assistant tool_call
+    This validator ensures the structural integrity of function calling sequences,
+    enforcing that every 'assistant' message with `tool_calls` is properly
+    resolved by subsequent 'tool' messages.
     """
 
     @staticmethod
@@ -88,10 +92,13 @@ class ToolChainValidator:
     @staticmethod
     def find_incomplete_tool_calls(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        找出所有未完成的工具调用（有 tool_call 但没有对应 tool 结果）
+        Identifies pending tool calls that lack a corresponding output.
+
+        Args:
+            messages: A list of message dictionaries.
 
         Returns:
-            未完成的 tool_call 列表
+            A list of tool call objects (dictionaries) that are currently unresolved.
         """
         expected: Dict[str, Dict] = {}  # tool_call_id -> tool_call_info
 
@@ -112,20 +119,25 @@ class ToolChainValidator:
 @dataclass(frozen=True)
 class HistoryPayload:
     """
-    历史记录载荷 (不可变)
+    A secured, immutable container for session history.
 
-    这是 MemoryManager.build_history() 的专用返回类型。
-    包含验证签名，BasePrompt 会验证其有效性。
+    This class serves as the Data Transfer Object (DTO) between the MemoryManager
+    and the BasePrompt. It guarantees that the history has been validated for
+    structural correctness and has not been modified since retrieval.
 
     Attributes:
-        messages: OpenAI 格式的消息列表
-        session_id: 来源会话ID
-        created_at: 创建时间戳
-        message_count: 消息数量
-        round_count: 对话轮数
-        has_tool_calls: 是否包含工具调用
-        tool_chain_valid: 工具调用链是否完整
-        _signature: 内部验证签名 (防止伪造)
+        messages: The raw history as an immutable tuple of dictionaries.
+        session_id: The unique identifier for the conversation session.
+        created_at: Unix timestamp indicating when this payload was generated.
+        message_count: The total number of messages in the payload.
+        round_count: The estimated number of conversation turns.
+        has_tool_calls: Boolean flag indicating if function calling occurred.
+        tool_chain_valid: Boolean flag indicating if the tool chain passed validation.
+
+    Example:
+        messages = [{"role": "user", "content": "Hello"}]
+        payload = HistoryPayload.create(messages, session_id="sess_123")
+        print(payload.message_count)
     """
     messages: Tuple[Dict[str, Any], ...]    # 使用 tuple 确保不可变
     session_id: str
@@ -159,22 +171,27 @@ class HistoryPayload:
             round_count: int = 0,
             validate_tool_chain: bool = True
     ) -> "HistoryPayload":
+
         """
-        工厂方法：创建 HistoryPayload (仅供 MemoryManager 使用)
+        Factory method to build a verified HistoryPayload.
+
+        This is the standard entry point for creating history objects. It handles
+        type conversion (List -> Tuple) and optional structural validation.
 
         Args:
-            messages: OpenAI 格式的消息列表
-            session_id: 会话ID
-            round_count: 对话轮数
-            validate_tool_chain: 是否验证工具调用链
+            messages: The list of OpenAI-formatted messages.
+            session_id: The unique session identifier.
+            round_count: Optional counter for conversation turns.
+            validate_tool_chain: If True, enforces tool chain integrity checks.
 
         Returns:
-            HistoryPayload 实例
+            A frozen HistoryPayload instance.
 
         Raises:
-            ToolChainError: 如果工具调用链不完整
+            ToolChainError: If validation is enabled and the tool chain is broken.
         """
-        # 检查是否有工具调用
+
+        # Detect presence of tool usage
         has_tool_calls = any(
             msg.get("role") == "assistant" and msg.get("tool_calls")
             for msg in messages
