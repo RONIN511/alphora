@@ -330,84 +330,79 @@ For detailed system design, component relationships, and implementation patterns
 | [Postprocess](docs/components/cn/postprocess_readme.md) | Stream transformation pipeline |
 
 
-
+---
 ## Contributors
 
-Developed with ❤️ by the **AlphaData Team**.
-
-## Contributors
-
-Architected and crafted entirely in-house by the **AlphaData Team**.
-
-## Contributors
-
-Architected and crafted entirely in-house by the **AlphaData Team**.
+Currently maintained with ❤️ by the **AlphaData Team**.
 
 <table>
   <tr>
-    <td align="center" valign="top" width="16%">
+    <td align="center" width="170px">
       <a href="https://github.com/tian-cmcc">
-        <img src="https://avatars.githubusercontent.com/tian-cmcc" width="100px;" alt="Tian Tian" style="border-radius: 50%;"/>
+        <img src="https://avatars.githubusercontent.com/tian-cmcc" width="80px;" style="border-radius: 50%;" alt="Tian Tian"/><br />
+        <b>Tian Tian</b>
       </a><br />
-      <br />
-      <a href="https://github.com/tian-cmcc"><b>Tian Tian</b></a><br />
-      <br /> <sub>Architecture &<br />Lead Design</sub><br />
-      <br />
-      <a href="mailto:tiantianit@chinamobile.com">Email</a>
+      <sub>Project Lead & Core Dev</sub><br />
+      <a href="mailto:tiantianit@chinamobile.com" title="Email Tian Tian">📧</a>
     </td>
-    <td align="center" valign="top" width="16%">
+    <td align="center" width="170px">
       <a href="https://github.com/yilingliang">
-        <img src="https://cdn.jsdelivr.net/gh/yilingliang/picbed/mdings/48301768.gif" width="100px;" alt="Yuhang Liang" style="border-radius: 50%;"/>
+        <img src="https://cdn.jsdelivr.net/gh/yilingliang/picbed/mdings/48301768.gif" width="80px;" style="border-radius: 50%;" alt="Yuhang Liang"/><br />
+        <b>Yuhang Liang</b>
       </a><br />
-      <br />
-      <a href="https://github.com/yilingliang"><b>Yuhang<br />Liang</b></a><br />
-      <br />
-      <sub>Algorithm<br />Engineer</sub><br />
-      <br />
-      <a href="mailto:liangyuhang@chinamobile.com">Email</a>
+      <sub>Developer</sub><br />
+      <a href="mailto:liangyuhang@chinamobile.com" title="Email Yuhang Liang">📧</a>
     </td>
-    <td align="center" valign="top" width="16%">
+    <td align="center" width="170px">
       <a href="https://github.com/jianhuishi">
-        <img src="https://avatars.githubusercontent.com/jianhuishi" width="100px;" alt="Jianhui Shi" style="border-radius: 50%;"/>
+        <img src="https://avatars.githubusercontent.com/jianhuishi" width="80px;" style="border-radius: 50%;" alt="Jianhui Shi"/><br />
+        <b>Jianhui Shi</b>
       </a><br />
-      <br />
-      <a href="https://github.com/jianhuishi"><b>Jianhui<br />Shi</b></a><br />
-       <br />
-      <sub>Core<br />Developer</sub><br />
-      <br />
-      <a href="mailto:shijianhui@chinamobile.com">Email</a>
+      <sub>Developer</sub><br />
+      <a href="mailto:shijianhui@chinamobile.com" title="Email Jianhui Shi">📧</a>
     </td>
-    <td align="center" valign="top" width="16%">
+    <td align="center" width="170px">
       <a href="https://github.com/liuyingdi2025">
-        <img src="https://avatars.githubusercontent.com/liuyingdi2025" width="100px;" alt="Yingdi Liu" style="border-radius: 50%;"/>
+        <img src="https://avatars.githubusercontent.com/liuyingdi2025" width="80px;" style="border-radius: 50%;" alt="Yingdi Liu"/><br />
+        <b>Yingdi Liu</b>
       </a><br />
-      <br />
-      <a href="https://github.com/liuyingdi2025"><b>Yingdi<br />Liu</b></a><br />
-      <br />
-      <sub>Core<br />Developer</sub><br />
-      <br />
-      <a href="mailto:liuyingdi@chinamobile.com">Email</a>
+      <sub>Developer</sub><br />
+      <a href="mailto:liuyingdi@chinamobile.com" title="Email Yingdi Liu">📧</a>
     </td>
-    <td align="center" valign="top" width="16%">
+    <td align="center" width="170px">
       <a href="https://github.com/hqy479">
-        <img src="https://avatars.githubusercontent.com/hqy479" width="100px;" alt="Qiuyang He" style="border-radius: 50%;"/>
+        <img src="https://avatars.githubusercontent.com/hqy479" width="80px;" style="border-radius: 50%;" alt="Qiuyang He"/><br />
+        <b>Qiuyang He</b>
       </a><br />
-      <br />
-      <a href="https://github.com/hqy479"><b>Qiuyang<br />He</b></a><br />
-      <br />
-      <sub>Developer<br />&nbsp;</sub><br /> <br />
-      <span style="color:transparent">Email</span> </td>
-    <td align="center" valign="top" width="16%">
+      <sub>Developer</sub><br />
+      -
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="170px">
       <a href="https://github.com/ljx139">
-        <img src="https://avatars.githubusercontent.com/ljx139" width="100px;" alt="LiuJX" style="border-radius: 50%;"/>
+        <img src="https://avatars.githubusercontent.com/ljx139" width="80px;" style="border-radius: 50%;" alt="LiuJX"/><br />
+        <b>LiuJX</b>
       </a><br />
-      <br />
-      <a href="https://github.com/ljx139"><b>LiuJX</b></a><br />
-      <br /> <sub>Developer<br />&nbsp;</sub><br /> <br />
-      <span style="color:transparent">Email</span> </td>
+      <sub>Developer</sub><br />
+      -
+    </td>
+    <td align="center" width="170px">
+      <a href="https://github.com/Cjdddd">
+        <img src="https://avatars.githubusercontent.com/Cjdddd" width="80px;" style="border-radius: 50%;" alt="Cjdddd"/><br />
+        <b>Cjdddd</b>
+      </a><br />
+      <sub>Developer</sub><br />
+      <a href="mailto:cuijindong@chinamobile.com" title="Email Cjdddd">📧</a>
+    </td>
+    <td align="center" width="170px"></td>
+    <td align="center" width="170px"></td>
+    <td align="center" width="170px"></td>
   </tr>
 </table>
 
+
+---
 
 ## License
 
@@ -415,3 +410,4 @@ This project is licensed under the **Apache License 2.0**.
 See [LICENSE](./LICENSE) for details.
 
 Contributions require acceptance of the [Contributor License Agreement (CLA)](CLA.md).
+
