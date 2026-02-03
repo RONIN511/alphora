@@ -3,10 +3,6 @@
 #
 # Author: Tian Tian (tiantianit@chinamobile.com)
 
-"""
-Alphora Debugger - API Routes
-"""
-
 import asyncio
 import logging
 from typing import Optional

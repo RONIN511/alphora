@@ -1,11 +1,6 @@
 """
 工具执行器
 
-重构要点:
-- 移除自动记忆功能
-- 执行工具并返回结果，由开发者手动记录到 MemoryManager
-- 简化接口，专注于工具执行本身
-
 使用示例:
 ```python
 from alphora.tools import ToolExecutor, ToolRegistry
@@ -104,14 +99,9 @@ class ToolExecutionResult(BaseModel):
 
 class ToolExecutor:
     """
-    工具执行引擎 (重构版)
+    工具执行引擎
 
-    负责解析和执行工具调用，不再自动管理记忆。
-
-    重构要点:
-    - 移除 memory_manager 参数
-    - 移除自动记录功能
-    - 专注于工具执行，返回结果由开发者自行处理
+    负责解析和执行工具调用。
 
     Example:
         executor = ToolExecutor(registry)
@@ -150,7 +140,7 @@ class ToolExecutor:
             ToolExecutionResult 列表
 
         Example:
-            # 直接传入 LLM 响应 (推荐)
+            # 直接传入 LLM 响应
             results = await executor.execute(response)
             memory.add_tool_result(results)
         """
@@ -196,8 +186,6 @@ class ToolExecutor:
     ) -> List[Dict[str, Any]]:
         """规范化工具调用输入"""
 
-        # 处理 ToolCall 对象 (继承自 list，有 content 属性)
-        # ToolCall 本身就是列表，直接转换即可
         if isinstance(tool_calls, list) and hasattr(tool_calls, 'content'):
             return list(tool_calls) if tool_calls else []
 
@@ -214,7 +202,7 @@ class ToolExecutor:
 
     async def _execute_single_tool(self, tool_call: Dict[str, Any]) -> ToolExecutionResult:
         """
-        执行单个工具调用 (内部方法)
+        执行单个工具调用
         """
         call_id = tool_call.get("id", "unknown")
         function_data = tool_call.get("function", {})
@@ -303,9 +291,9 @@ class ToolExecutor:
             tool_calls: Union[ToolCall, List[Dict[str, Any]], Dict[str, Any]],
     ) -> List[ToolExecutionResult]:
         """
-        同步执行工具调用 (便捷方法)
+        同步执行工具调用
 
-        在非异步环境中使用。
+        在非异步环境中使用
 
         Args:
             tool_calls: 工具调用数据
@@ -323,7 +311,7 @@ async def execute_tools(
         tool_calls: Union[ToolCall, List[Dict[str, Any]]],
 ) -> List[ToolExecutionResult]:
     """
-    便捷函数：执行工具调用
+    执行工具调用
 
     Args:
         registry: 工具注册表
@@ -347,7 +335,7 @@ def add_tool_results_to_memory(
         session_id: str = "default"
 ) -> None:
     """
-    便捷函数：将工具执行结果添加到记忆
+    将工具执行结果添加到记忆
 
     Args:
         memory: MemoryManager 实例
@@ -365,3 +353,4 @@ def add_tool_results_to_memory(
             content=result.content,
             session_id=session_id
         )
+

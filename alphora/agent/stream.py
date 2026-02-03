@@ -84,7 +84,6 @@ class Stream:
         if interval < 0:
             raise ValueError("Interval must be non-negative")
 
-        # 创建一个自定义生成器类
         class StringGenerator(BaseGenerator[GeneratorOutput]):
             def __init__(self, content: str, content_type: str, interval: float):
                 super().__init__(content_type)

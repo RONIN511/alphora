@@ -6,6 +6,8 @@
 """
 Alphora Debugger
 
+这里还没改完，暂时先不要用
+
 Features
 1. HistoryPayload 追踪 - 记录历史消息的使用情况
 2. Runtime System Prompt 追踪

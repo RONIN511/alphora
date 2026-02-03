@@ -10,9 +10,7 @@ class ToolRegistry:
     负责管理所有的 Tool 实例，处理命名冲突，并生成聚合的 OpenAI Tools Schema。
     """
     def __init__(self):
-        # 使用字典存储，key=tool_name
         self._tools: Dict[str, Tool] = {}
-        # 简单的线程锁，防止并发注册时的竞争条件
         self._lock = threading.RLock()
 
     def register(
@@ -21,14 +19,14 @@ class ToolRegistry:
             name_override: Optional[str] = None
     ) -> Tool:
         """
-        核心注册方法
+        注册方法
 
         Args:
-            tool_or_func: 可以是一个已经封装好的 Tool 对象，也可以是一个原生函数/方法。
+            tool_or_func: 已经封装好的 Tool 对象，or 原生函数/方法。
             name_override: 强制重命名工具（用于解决重名问题）
         """
         with self._lock:
-            # 1. 统一转换为 Tool 对象
+            # 统一转换为 Tool 对象
             if isinstance(tool_or_func, Tool):
                 tool = tool_or_func
                 # 如果提供了重命名，创建一个副本
@@ -40,7 +38,7 @@ class ToolRegistry:
             else:
                 raise ToolRegistrationError(f"Invalid item type: {type(tool_or_func)}. Must be Tool or Callable.")
 
-            # 2. 检查命名冲突
+            # 检查命名冲突
             if tool.name in self._tools:
                 # 策略：严格报错。不建议自动加后缀，这会导致大模型调用不可预测。
                 # 开发者必须显式使用 name_override 解决冲突。
@@ -49,7 +47,6 @@ class ToolRegistry:
                     "Please provide a unique 'name_override' or rename the function."
                 )
 
-            # 3. 入库
             self._tools[tool.name] = tool
             return tool
 
@@ -71,5 +68,4 @@ class ToolRegistry:
             self._tools.clear()
 
 
-# 全局可选的默认注册表
 default_registry = ToolRegistry()

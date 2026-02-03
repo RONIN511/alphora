@@ -140,8 +140,6 @@ class Message:
         if self.metadata is not None:
             self.metadata = dict(self.metadata)
 
-    # ==================== 不可变更新方法 ====================
-
     def with_content(self, content: str) -> "Message":
         """
         返回内容更新后的新消息（不可变更新）
@@ -365,8 +363,6 @@ class Message:
             name=data.get("name"),
         )
 
-    # ==================== 工厂方法 ====================
-
     @classmethod
     def user(cls, content: str, **metadata) -> "Message":
         """创建用户消息"""
@@ -432,8 +428,6 @@ class Message:
         """创建系统消息"""
         return cls(role="system", content=content, metadata=metadata)
 
-    # ==================== 属性方法 ====================
-
     @property
     def is_user(self) -> bool:
         return self.role == "user"
@@ -486,8 +480,6 @@ class Message:
         """格式化时间戳"""
         return time.strftime(fmt, time.localtime(self.timestamp))
 
-    # ==================== 魔术方法 ====================
-
     def __repr__(self) -> str:
         content_preview = (
             (self.display_content[:30] + "...") 
@@ -505,5 +497,5 @@ class Message:
     def __str__(self) -> str:
         prefix = ""
         if self.is_pinned:
-            prefix = "📌 "
+            prefix = "pinned "
         return f"{prefix}[{self.role}]: {self.display_content}"

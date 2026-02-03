@@ -44,7 +44,7 @@ class ReActAgent(BaseAgent):
     """
     ReAct (Reasoning + Acting) 智能体
 
-    自动处理 LLM 推理和工具调用的循环，直到任务完成或达到最大迭代次数。
+    自动处理 LLM 推理和工具调用的循环，直到任务完成或达到最大迭代次数
 
     Args:
         llm: LLM 实例
@@ -98,7 +98,6 @@ class ReActAgent(BaseAgent):
         for t in tools:
             self._registry.register(t)
 
-        # 如果提供了 sandbox，注册沙箱相关工具
         if sandbox is not None:
             self._setup_sandbox_tools(sandbox)
 
@@ -124,15 +123,12 @@ class ReActAgent(BaseAgent):
 
     def _setup_sandbox_tools(self, sandbox: Sandbox) -> None:
         """
-        设置沙箱工具
-
-        将 Sandbox 的能力注册为可被 LLM 调用的工具
+        设置沙箱工具， 将 Sandbox 的能力注册为可被 LLM 调用的工具
         """
         from alphora.sandbox import SandboxTools
 
         self._sandbox_tools = SandboxTools(sandbox)
 
-        # 创建代码执行工具
         @tool(name="execute_python", description="在安全沙箱中执行 Python 代码并返回结果。用于数据分析、计算、文件处理等任务。")
         async def execute_python(code: str) -> str:
             """

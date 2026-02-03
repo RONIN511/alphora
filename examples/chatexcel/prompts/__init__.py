@@ -1,0 +1,4 @@
+"""ChatExcel 提示词模块"""
+from .excel_qa import CONTROL_PROMPT, THINKING_PROMPT, WELCOME_MESSAGE
+
+__all__ = ['CONTROL_PROMPT', 'THINKING_PROMPT', 'WELCOME_MESSAGE']

@@ -282,26 +282,6 @@ curl -X POST http://localhost:8000/chat/v1/chat/completions \
 
 ---
 
-## Architecture
-
-For detailed system design, component relationships, and implementation patterns, see the [Architecture Guide](./docs/ARCHITECTURE.md).
-
-### Component Overview
-
-| Component                                    | Purpose |
-|----------------------------------------------|---------|
-| [Agent](docs/components/cn/agent_readme.md)             | Core agent lifecycle, derivation, ReAct loop |
-| [Prompter](docs/components/cn/prompter_readme.md)       | Jinja2 templates, LLM invocation, streaming |
-| [Models](docs/components/cn/model_readme.md)            | LLM interface, multimodal, load balancing |
-| [Tools](docs/components/cn/tool_readme.md)              | tool decorator, registry, parallel execution |
-| [Memory](docs/components/cn/memory_readme.md)           | Session management, history, pin/tag system |
-| [Storage](docs/components/cn/storage_readme.md)         | Persistent backends (memory, JSON, SQLite) |
-| [Sandbox](docs/components/cn/sandbox_readme.md)         | Secure code execution environment |
-| [Server](docs/components/cn/server_readme.md)           | API publishing, SSE streaming |
-| [Postprocess](docs/components/cn/postprocess_readme.md) | Stream transformation pipeline |
-
----
-
 ## Configuration
 
 ```bash
@@ -329,38 +309,104 @@ llm = OpenAILike(
 )
 ```
 
----
+
 
 ## Documentation
 
-| Resource | Description |
-|----------|-------------|
-| [Getting Started](https://docs.alphora.dev/getting-started) | Installation and first agent |
-| [Core Concepts](https://docs.alphora.dev/concepts) | Agents, prompts, tools, memory |
-| [Architecture](./docs/ARCHITECTURE.md) | System design and patterns |
-| [API Reference](https://docs.alphora.dev/api) | Complete API documentation |
-| [Cookbook](https://docs.alphora.dev/cookbook) | Recipes and best practices |
+For detailed system design, component relationships, and implementation patterns, see the [Architecture Guide](./docs/ARCHITECTURE.md).
 
----
+### Component Overview
 
-## Contributing
+| Component                                    | Description |
+|----------------------------------------------|---------|
+| [Agent](docs/components/cn/agent_readme.md)             | Core agent lifecycle, derivation, ReAct loop |
+| [Prompter](docs/components/cn/prompter_readme.md)       | Jinja2 templates, LLM invocation, streaming |
+| [Models](docs/components/cn/model_readme.md)            | LLM interface, multimodal, load balancing |
+| [Tools](docs/components/cn/tool_readme.md)              | tool decorator, registry, parallel execution |
+| [Memory](docs/components/cn/memory_readme.md)           | Session management, history, pin/tag system |
+| [Storage](docs/components/cn/storage_readme.md)         | Persistent backends (memory, JSON, SQLite) |
+| [Sandbox](docs/components/cn/sandbox_readme.md)         | Secure code execution environment |
+| [Server](docs/components/cn/server_readme.md)           | API publishing, SSE streaming |
+| [Postprocess](docs/components/cn/postprocess_readme.md) | Stream transformation pipeline |
 
-We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
-```bash
-git clone https://github.com/alphora/alphora.git
-cd alphora && pip install -e ".[dev]"
-pytest tests/
-```
 
 ## Contributors
 
-Architected and crafted entirely in-house by the AlphaData Team.
+Developed with ❤️ by the **AlphaData Team**.
 
-| Core Member | Role & Affiliation                                                                                                                                                      |
-| :---: |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://avatars.githubusercontent.com/tian-cmcc" width="80px" style="border-radius: 50%;"/> <br /> **Tian Tian** | **Architecture & Design** <br>  *China Mobile Communications Group Co.,Ltd* <br>  Email: [tiantianit@chinamobile.com](tiantianit@chinamobile.com)                       |
-| <img src="https://github.com/identicons/app.png" width="80px" style="border-radius: 50%;"/> <br /> **Your Name** | **Role Description** <br> *China Mobile Communications Group Co.,Ltd* <br> Email: [xxx@chinamobile.com](https://github.com/) |
+## Contributors
+
+Architected and crafted entirely in-house by the **AlphaData Team**.
+
+## Contributors
+
+Architected and crafted entirely in-house by the **AlphaData Team**.
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="16%">
+      <a href="https://github.com/tian-cmcc">
+        <img src="https://avatars.githubusercontent.com/tian-cmcc" width="100px;" alt="Tian Tian" style="border-radius: 50%;"/>
+      </a><br />
+      <br />
+      <a href="https://github.com/tian-cmcc"><b>Tian Tian</b></a><br />
+      <br /> <sub>Architecture &<br />Lead Design</sub><br />
+      <br />
+      <a href="mailto:tiantianit@chinamobile.com">Email</a>
+    </td>
+    <td align="center" valign="top" width="16%">
+      <a href="https://github.com/yilingliang">
+        <img src="https://cdn.jsdelivr.net/gh/yilingliang/picbed/mdings/48301768.gif" width="100px;" alt="Yuhang Liang" style="border-radius: 50%;"/>
+      </a><br />
+      <br />
+      <a href="https://github.com/yilingliang"><b>Yuhang<br />Liang</b></a><br />
+      <br />
+      <sub>Algorithm<br />Engineer</sub><br />
+      <br />
+      <a href="mailto:liangyuhang@chinamobile.com">Email</a>
+    </td>
+    <td align="center" valign="top" width="16%">
+      <a href="https://github.com/jianhuishi">
+        <img src="https://avatars.githubusercontent.com/jianhuishi" width="100px;" alt="Jianhui Shi" style="border-radius: 50%;"/>
+      </a><br />
+      <br />
+      <a href="https://github.com/jianhuishi"><b>Jianhui<br />Shi</b></a><br />
+       <br />
+      <sub>Core<br />Developer</sub><br />
+      <br />
+      <a href="mailto:shijianhui@chinamobile.com">Email</a>
+    </td>
+    <td align="center" valign="top" width="16%">
+      <a href="https://github.com/liuyingdi2025">
+        <img src="https://avatars.githubusercontent.com/liuyingdi2025" width="100px;" alt="Yingdi Liu" style="border-radius: 50%;"/>
+      </a><br />
+      <br />
+      <a href="https://github.com/liuyingdi2025"><b>Yingdi<br />Liu</b></a><br />
+      <br />
+      <sub>Core<br />Developer</sub><br />
+      <br />
+      <a href="mailto:liuyingdi@chinamobile.com">Email</a>
+    </td>
+    <td align="center" valign="top" width="16%">
+      <a href="https://github.com/hqy479">
+        <img src="https://avatars.githubusercontent.com/hqy479" width="100px;" alt="Qiuyang He" style="border-radius: 50%;"/>
+      </a><br />
+      <br />
+      <a href="https://github.com/hqy479"><b>Qiuyang<br />He</b></a><br />
+      <br />
+      <sub>Developer<br />&nbsp;</sub><br /> <br />
+      <span style="color:transparent">Email</span> </td>
+    <td align="center" valign="top" width="16%">
+      <a href="https://github.com/ljx139">
+        <img src="https://avatars.githubusercontent.com/ljx139" width="100px;" alt="LiuJX" style="border-radius: 50%;"/>
+      </a><br />
+      <br />
+      <a href="https://github.com/ljx139"><b>LiuJX</b></a><br />
+      <br /> <sub>Developer<br />&nbsp;</sub><br /> <br />
+      <span style="color:transparent">Email</span> </td>
+  </tr>
+</table>
 
 
 ## License

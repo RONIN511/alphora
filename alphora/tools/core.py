@@ -35,7 +35,7 @@ class Tool(BaseModel):
             args_schema: Optional[Type[BaseModel]] = None
     ) -> "Tool":
         """
-        工厂方法：将普通函数或方法转换为 Tool 实例。
+        将普通函数或方法转换为 Tool 实例。
         自动处理 docstring 解析和 Pydantic 模型动态生成。
         """
         # 1. 确定名称
@@ -121,13 +121,10 @@ class Tool(BaseModel):
         """验证并清洗输入参数"""
         if isinstance(tool_input, str):
             # 如果大模型传回的是 JSON 字符串，先解析
-            # 注意：实际场景中通常由 ToolExecutor 统一解析 JSON，这里假设传入的是 Dict
-            # 为了健壮性，这里不处理 JSON 字符串解析，交给上层
+            # 注意：实际场景中通常由 ToolExecutor 统一解析 JSON，这里不处理 JSON 字符串解析，交给上层
             raise ToolValidationError("Tool input should be a dictionary, not string.")
 
         try:
-            # 使用 Pydantic 进行验证和类型转换
-            # 例如：如果模型需要 int，大模型传了 "10"，这里会自动转为 10
             validated_model = self.args_schema(**tool_input)
             return validated_model.model_dump()
         except Exception as e:
@@ -150,8 +147,7 @@ class Tool(BaseModel):
     async def arun(self, **kwargs) -> Any:
         """异步执行入口"""
         if not self.is_async:
-            # 如果是同步函数被异步调用，使用 run_in_executor 防止阻塞 EventLoop
-            # 非常重要
+            # 使用 run_in_executor 防止阻塞 EventLoop
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, lambda: self.run(**kwargs))
 

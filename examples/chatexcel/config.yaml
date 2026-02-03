@@ -1,0 +1,70 @@
+# ChatExcel 配置文件
+
+# ==================== 沙箱配置 ====================
+sandbox:
+  # 后端类型: local 或 docker
+  backend: local
+  
+  # 沙箱基础路径
+  base_path: /tmp/chatexcel_sandboxes
+  
+  # 资源限制
+  resource_limits:
+    timeout_seconds: 300
+    memory_mb: 512
+    cpu_cores: 1.0
+    disk_mb: 1024
+    network_enabled: false
+  
+  # Docker 配置（仅 docker 后端生效）
+  docker:
+    image: python:3.11-slim
+    network_mode: none
+
+# ==================== LLM 配置 ====================
+llm:
+  provider: openai
+  model: gpt-4-turbo-preview
+  
+  # API Key（也可通过环境变量设置）
+  # api_key: sk-xxx
+  
+  # 其他参数
+  temperature: 0.7
+  max_tokens: 4096
+
+# ==================== 联网搜索配置 ====================
+search:
+  # 博查 API Key（也可通过环境变量 BOCHA_API_KEY 设置）
+  # api_key: xxx
+  
+  # 默认搜索结果数
+  default_count: 8
+  
+  # 默认时间范围
+  default_freshness: noLimit
+
+# ==================== 服务器配置 ====================
+server:
+  host: 0.0.0.0
+  port: 8000
+  
+  # 最大会话数
+  max_sessions: 100
+  
+  # 会话空闲超时（秒）
+  session_idle_timeout: 3600
+  
+  # CORS 配置
+  cors:
+    allow_origins:
+      - "*"
+    allow_methods:
+      - "*"
+    allow_headers:
+      - "*"
+
+# ==================== 日志配置 ====================
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

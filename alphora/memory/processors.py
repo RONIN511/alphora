@@ -47,10 +47,6 @@ if TYPE_CHECKING:
 Processor = Callable[[List["Message"]], List["Message"]]
 
 
-# =============================================================================
-# 处理器上下文（可选，用于需要额外信息的处理器）
-# =============================================================================
-
 @dataclass
 class ProcessorContext:
     """
@@ -67,10 +63,6 @@ class ProcessorContext:
         if self.extra is None:
             self.extra = {}
 
-
-# =============================================================================
-# 工具函数
-# =============================================================================
 
 def chain(*processors: Processor) -> Processor:
     """
@@ -107,10 +99,6 @@ def identity() -> Processor:
     """
     return lambda msgs: msgs
 
-
-# =============================================================================
-# 过滤类处理器
-# =============================================================================
 
 def keep_last(n: int) -> Processor:
     """
@@ -335,10 +323,6 @@ def exclude_by(predicate: Callable[["Message"], bool]) -> Processor:
     return processor
 
 
-# =============================================================================
-# 组合过滤器（保留重要消息 + 最后 N 条）
-# =============================================================================
-
 def keep_important_and_last(
     n: int,
     include_pinned: bool = True,
@@ -386,10 +370,6 @@ def keep_important_and_last(
         return [messages[i] for i in keep_indices]
     return processor
 
-
-# =============================================================================
-# 变换类处理器
-# =============================================================================
 
 def truncate_content(max_length: int, suffix: str = "...[truncated]") -> Processor:
     """
@@ -462,10 +442,6 @@ def map_messages(fn: Callable[["Message"], "Message"]) -> Processor:
         return [fn(m) for m in messages]
     return processor
 
-
-# =============================================================================
-# 工具调用相关处理器
-# =============================================================================
 
 def summarize_tool_calls(
     format_fn: Optional[Callable[[List[Dict]], str]] = None
@@ -610,10 +586,6 @@ def keep_final_tool_result() -> Processor:
         return result
     return processor
 
-
-# =============================================================================
-# Token 预算处理器
-# =============================================================================
 
 def token_budget(
     max_tokens: int,

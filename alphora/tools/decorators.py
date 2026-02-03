@@ -17,7 +17,6 @@ def tool(
 
     if callable(name):
         func = name
-        # 这种情况下 name 是函数，所以真正的 name 是 None (让 Tool.from_function 去提取)
         return Tool.from_function(func=func)
 
     tool_name = name  # 避免变量名混淆

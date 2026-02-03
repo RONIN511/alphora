@@ -6,7 +6,7 @@
 """
 记忆管理器
 
-统一的对话历史管理入口，提供简洁、开发者友好的API。
+统一的对话历史管理入口，提供简洁、开发者友好的API
 
 核心特性:
 - 标准 OpenAI 消息格式
@@ -15,8 +15,6 @@
 - 历史压缩与清理
 - 撤销/重做支持
 - 多种存储后端
-
-增强特性 (v2):
 - 处理器机制 (processor): 构建历史时临时处理消息
 - 标记系统 (pin/tag): 标记重要消息，压缩时保留
 - apply/remove: 永久修改存储数据
@@ -56,7 +54,6 @@ from alphora.memory.processors import (
 logger = logging.getLogger(__name__)
 
 
-# 位置常量
 class Position:
     """注入位置常量"""
     START = "start"
@@ -271,10 +268,7 @@ class MemoryManager:
         else:
             raise TypeError(f"Invalid target type: {type(target)}")
 
-    # =========================================================================
     # 添加消息 API
-    # =========================================================================
-
     def add_user(
             self,
             content: str,
@@ -337,7 +331,7 @@ class MemoryManager:
         actual_content = content
         actual_tool_calls = tool_calls
 
-        # 智能识别 ToolCall 对象
+        # 智能识别 ToolCall 对象 （models/llms/type里面的ToolCall）
         if isinstance(content, list) and hasattr(content, 'content'):
             tc_obj = content
             if len(tc_obj) > 0:
@@ -438,7 +432,7 @@ class MemoryManager:
             session_id: str = DEFAULT_SESSION,
             **metadata
     ) -> Message:
-        """添加单个工具结果 (内部方法)"""
+        """添加单个工具结果 """
         if not self._validate_tool_call_id(session_id, tool_call_id):
             logger.warning(
                 f"tool_call_id '{tool_call_id}' not found in session '{session_id}'. "
@@ -533,10 +527,7 @@ class MemoryManager:
 
         return message
 
-    # =========================================================================
     # 获取消息 API
-    # =========================================================================
-
     def get_messages(
             self,
             session_id: str = DEFAULT_SESSION,
@@ -553,7 +544,7 @@ class MemoryManager:
             limit: 返回数量限制
             offset: 偏移量 (从末尾算起)
             role: 筛选角色 (user/assistant/tool/system)
-            filter: 自定义过滤函数 (v2 新增)
+            filter: 自定义过滤函数
 
         Returns:
             Message 列表
@@ -568,7 +559,7 @@ class MemoryManager:
             # 只获取用户消息
             messages = memory.get_messages(role="user")
 
-            # 获取被固定的消息 (v2)
+            # 获取被固定的消息
             messages = memory.get_messages(filter=lambda m: m.is_pinned)
         """
         messages = self._cache.get(session_id, [])
@@ -648,10 +639,7 @@ class MemoryManager:
         """
         return self.get_messages(session_id, filter=lambda m: m.has_tag(tag))
 
-    # =========================================================================
-    # 构建历史 API (v2 增强)
-    # =========================================================================
-
+    # 构建历史 API
     def build_history(
             self,
             session_id: str = DEFAULT_SESSION,
@@ -659,7 +647,6 @@ class MemoryManager:
             max_messages: Optional[int] = None,
             include_system: bool = False,
             validate_tool_chain: bool = True,
-            # v2 新增参数
             processor: Optional[Union[Processor, List[Processor]]] = None,
             exclude_roles: Optional[List[str]] = None,
             keep_pinned: bool = False,
@@ -677,8 +664,6 @@ class MemoryManager:
             max_messages: 最大消息数
             include_system: 是否包含历史中的 system 消息
             validate_tool_chain: 是否验证工具调用链完整性
-
-            # v2 新增参数
             processor: 处理器，可以是:
                 - Callable[[List[Message]], List[Message]]: 自定义处理函数
                 - List[Processor]: 多个处理器依次执行
@@ -720,19 +705,19 @@ class MemoryManager:
         """
         messages = self._cache.get(session_id, [])
 
-        # 1. 过滤 system 消息 (如果不需要)
+        # 过滤 system 消息 (如果不需要)
         if not include_system:
             messages = [m for m in messages if m.role != "system"]
 
-        # 2. 按轮数限制
+        # 按轮数限制
         if max_rounds:
             messages = self._limit_by_rounds(messages, max_rounds)
 
-        # 3. 按消息数限制
+        # 按消息数限制
         if max_messages and len(messages) > max_messages:
             messages = messages[-max_messages:]
 
-        # 4. 处理便捷参数 (转换为处理器链)
+        # 处理便捷参数 (转换为处理器链)
         convenience_processors: List[Processor] = []
 
         if exclude_roles:
@@ -751,11 +736,11 @@ class MemoryManager:
                 )
             )
 
-        # 5. 应用便捷参数处理器
+        # 应用便捷参数处理器
         for proc in convenience_processors:
             messages = proc(messages)
 
-        # 6. 应用自定义处理器
+        # 应用自定义处理器
         if processor:
             if callable(processor) and not isinstance(processor, list):
                 messages = processor(messages)
@@ -763,13 +748,13 @@ class MemoryManager:
                 for proc in processor:
                     messages = proc(messages)
 
-        # 7. 转换为 OpenAI 格式
+        # 转换为 OpenAI 格式
         openai_messages = [m.to_openai_format() for m in messages]
 
-        # 8. 计算轮数
+        # 计算轮数
         round_count = sum(1 for m in messages if m.role == "user")
 
-        # 9. 创建 HistoryPayload
+        # 创建 HistoryPayload
         return HistoryPayload.create(
             messages=openai_messages,
             session_id=session_id,
@@ -788,7 +773,7 @@ class MemoryManager:
         """
         构建历史记录载荷 (不验证工具链)
 
-        警告: 仅在你确定工具链是不完整的情况下使用（例如工具调用进行中）
+        警告: 仅在确定工具链是不完整的情况下使用（例如工具调用进行中）
 
         Args:
             session_id: 会话ID
@@ -833,10 +818,6 @@ class MemoryManager:
             i -= 1
 
         return messages[cut_index:]
-
-    # =========================================================================
-    # v2 新增：永久修改 API
-    # =========================================================================
 
     def apply(
             self,
@@ -1000,10 +981,6 @@ class MemoryManager:
 
         self._save_session(session_id)
 
-    # =========================================================================
-    # v2 新增：标记系统 API
-    # =========================================================================
-
     def pin(
             self,
             target: Target,
@@ -1113,10 +1090,6 @@ class MemoryManager:
             session_id=session_id
         )
 
-    # =========================================================================
-    # 工具链相关 API
-    # =========================================================================
-
     def check_tool_chain(
             self,
             session_id: str = DEFAULT_SESSION
@@ -1141,10 +1114,6 @@ class MemoryManager:
         """
         messages = [m.to_openai_format() for m in self._cache.get(session_id, [])]
         return ToolChainValidator.find_incomplete_tool_calls(messages)
-
-    # =========================================================================
-    # 删除/清理 API
-    # =========================================================================
 
     def delete_message(
             self,
@@ -1309,10 +1278,6 @@ class MemoryManager:
 
         return original_len - len(messages)
 
-    # =========================================================================
-    # 撤销/重做 API
-    # =========================================================================
-
     def undo(self, session_id: str = DEFAULT_SESSION) -> bool:
         """撤销上一次操作"""
         if not self._enable_undo:
@@ -1352,10 +1317,6 @@ class MemoryManager:
     def can_redo(self, session_id: str = DEFAULT_SESSION) -> bool:
         """是否可以重做"""
         return bool(self._redo_stacks.get(session_id))
-
-    # =========================================================================
-    # 会话管理 API
-    # =========================================================================
 
     def list_sessions(self) -> List[str]:
         """列出所有会话ID"""
@@ -1441,10 +1402,6 @@ class MemoryManager:
 
         return True
 
-    # =========================================================================
-    # 持久化 API
-    # =========================================================================
-
     def save(self):
         """手动保存到存储"""
         for session_id in self._cache:
@@ -1455,10 +1412,6 @@ class MemoryManager:
         """从存储重新加载"""
         self._cache.clear()
         self._load_from_storage()
-
-    # =========================================================================
-    # 兼容方法 (保留但标记为废弃)
-    # =========================================================================
 
     def build_messages(
             self,
@@ -1472,7 +1425,7 @@ class MemoryManager:
         """
         [已废弃] 构建发送给 LLM 的消息列表
 
-        推荐使用 build_history() 代替。
+        使用 build_history() 代替。
         """
         import warnings
         warnings.warn(
@@ -1511,7 +1464,7 @@ class MemoryManager:
             max_messages: Optional[int] = None,
             include_system: bool = True,
     ) -> List[Dict[str, Any]]:
-        """获取用于构建的历史消息 (内部方法)"""
+        """获取用于构建的历史消息 """
         messages = self._cache.get(session_id, [])
 
         if not include_system:
@@ -1524,10 +1477,6 @@ class MemoryManager:
             messages = messages[-max_messages:]
 
         return [m.to_openai_format() for m in messages]
-
-    # =========================================================================
-    # 魔术方法
-    # =========================================================================
 
     def __len__(self) -> int:
         """返回总消息数"""
