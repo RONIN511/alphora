@@ -1,6 +1,6 @@
 <h1 align="center">
-  <img src="asset/image/logo.png" width="40" style="vertical-align:middle">
-  Alphora
+  <img src="asset/image/logo.png" width="70" style="vertical-align:middle; margin-right:8px;">
+  <span style="font-size:46px; vertical-align:middle;">Alphora</span>
 </h1>
 
 <p align="center">
