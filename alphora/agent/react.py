@@ -236,22 +236,20 @@ class ReActAgent(BaseAgent):
 
     async def run(
             self,
-            query: str,
-            session_id: Optional[str] = None,
+            query: str
     ) -> str:
         """
         执行完整的 ReAct 循环
 
         Args:
             query: 用户查询
-            session_id: 可选的会话 ID，用于多轮对话
 
         Returns:
             最终响应文本
         """
         # 添加用户消息到记忆
-        if session_id:
-            self.memory.add_user(session_id=session_id, content=query)
+
+        self.memory.add_user(content=query)
 
         tools_schema = self._registry.get_openai_tools_schema()
 
@@ -259,19 +257,19 @@ class ReActAgent(BaseAgent):
             logger.debug(f"ReAct iteration {iteration + 1}/{self._max_iterations}")
 
             # 构建历史
-            history = self.memory.build_history(session_id=session_id) if session_id else None
+            history = self.memory.build_history()
 
             # 调用 LLM
             response = await self._prompt.acall(
-                query=query if iteration == 0 and not session_id else None,
+                query=query if iteration == 0 else None,
                 history=history,
                 tools=tools_schema,
                 is_stream=True,
             )
 
             # 记录助手响应
-            if session_id:
-                self.memory.add_assistant(session_id=session_id, content=response)
+
+            self.memory.add_assistant(content=response)
 
             # 检查是否有工具调用
             if not response.has_tool_calls:
@@ -281,14 +279,8 @@ class ReActAgent(BaseAgent):
             # 执行工具调用
             tool_results = await self._executor.execute(response.tool_calls)
 
-            # 记录工具结果到记忆
-            if session_id:
-                self.memory.add_tool_result(session_id=session_id, result=tool_results)
-            else:
-                # 无 session 模式：将工具结果添加到 prompt 的临时历史
-                self._prompt.add_tool_results(tool_results)
+            self.memory.add_tool_result(result=tool_results)
 
-            # 打印工具执行信息（如果 verbose）
             if self.verbose:
                 for result in tool_results:
                     status = "✓" if result.status == "success" else "✗"
@@ -300,8 +292,7 @@ class ReActAgent(BaseAgent):
 
     async def run_steps(
             self,
-            query: str,
-            session_id: Optional[str] = None,
+            query: str
     ) -> AsyncIterator["ReActStep"]:
         """
         逐步执行 ReAct 循环，yield 每一步的结果
@@ -310,28 +301,26 @@ class ReActAgent(BaseAgent):
 
         Args:
             query: 用户查询
-            session_id: 可选的会话 ID
 
         Yields:
             ReActStep: 每一步的执行结果
         """
-        if session_id:
-            self.memory.add_user(session_id=session_id, content=query)
+
+        self.memory.add_user(content=query)
 
         tools_schema = self._registry.get_openai_tools_schema()
 
         for iteration in range(self._max_iterations):
-            history = self.memory.build_history(session_id=session_id) if session_id else None
+            history = self.memory.build_history()
 
             response = await self._prompt.acall(
-                query=query if iteration == 0 and not session_id else None,
+                query=query if iteration == 0 else None,
                 history=history,
                 tools=tools_schema,
                 is_stream=True,
             )
 
-            if session_id:
-                self.memory.add_assistant(session_id=session_id, content=response)
+            self.memory.add_assistant(content=response)
 
             if not response.has_tool_calls:
                 yield ReActStep(
@@ -346,10 +335,7 @@ class ReActAgent(BaseAgent):
 
             tool_results = await self._executor.execute(response.tool_calls)
 
-            if session_id:
-                self.memory.add_tool_result(session_id=session_id, result=tool_results)
-            else:
-                self._prompt.add_tool_results(tool_results)
+            self.memory.add_tool_result(result=tool_results)
 
             yield ReActStep(
                 iteration=iteration + 1,
