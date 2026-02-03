@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <a href="https://docs.alphora.dev">Docs</a> •
+  <a href="docs/ARCHITECTURE.md">Docs</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#examples">Examples</a> •
   <a href="https://github.com/alphora/alphora/discussions">Community</a>
