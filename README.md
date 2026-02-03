@@ -19,10 +19,10 @@
 </p>
 
 <p align="center">
-  <a href="docs/ARCHITECTURE.md">Docs</a> •
+  <a href="#docs/ARCHITECTURE.md">Docs</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#examples">Examples</a> •
-  <a href="https://github.com/alphora/alphora/discussions">Community</a>
+  <a href="README.cn.md">中文</a>
 </p>
 
 ---
@@ -273,11 +273,11 @@ curl -X POST http://localhost:8000/chat/v1/chat/completions \
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| [ChatExcel](./examples/chat-excel) | Data analysis agent with sandbox code execution |
-| [RAG Agent](./examples/rag-agent) | Retrieval-augmented generation with vector search |
-| [Multi-Agent](./examples/multi-agent) | Hierarchical agents with tool-as-agent pattern |
+| Example                                     | Description |
+|---------------------------------------------|-------------|
+| [ChatExcel](./examples/chatexcel)           | Data analysis agent with sandbox code execution |
+| [RAG Agent](./examples/rag-agent)           | Retrieval-augmented generation with vector search |
+| [Multi-Agent](./examples/multi-agent)       | Hierarchical agents with tool-as-agent pattern |
 | [Streaming Chat](./examples/streaming-chat) | Real-time chat with thinking mode |
 
 ---
@@ -333,76 +333,10 @@ For detailed system design, component relationships, and implementation patterns
 ---
 ## Contributors
 
-Crafted with ❤️ by the AlphaData Team. Built with ❤️ by the AlphaData Team.
+Crafted by the AlphaData Team. 
 
-<table>
-  <tr>
-    <td align="center" width="170px">
-      <a href="https://github.com/tian-cmcc">
-        <img src="https://avatars.githubusercontent.com/tian-cmcc" width="80px;" style="border-radius: 50%;" alt="Tian Tian"/><br />
-        <b>Tian Tian</b>
-      </a><br />
-      <sub>Project Lead & Core Dev</sub><br />
-      <a href="mailto:tiantianit@chinamobile.com" title="Email Tian Tian">📧</a>
-    </td>
-    <td align="center" width="170px">
-      <a href="https://github.com/yilingliang">
-        <img src="https://cdn.jsdelivr.net/gh/yilingliang/picbed/mdings/48301768.gif" width="80px;" style="border-radius: 50%;" alt="Yuhang Liang"/><br />
-        <b>Yuhang Liang</b>
-      </a><br />
-      <sub>Developer</sub><br />
-      <a href="mailto:liangyuhang@chinamobile.com" title="Email Yuhang Liang">📧</a>
-    </td>
-    <td align="center" width="170px">
-      <a href="https://github.com/jianhuishi">
-        <img src="https://avatars.githubusercontent.com/jianhuishi" width="80px;" style="border-radius: 50%;" alt="Jianhui Shi"/><br />
-        <b>Jianhui Shi</b>
-      </a><br />
-      <sub>Developer</sub><br />
-      <a href="mailto:shijianhui@chinamobile.com" title="Email Jianhui Shi">📧</a>
-    </td>
-    <td align="center" width="170px">
-      <a href="https://github.com/liuyingdi2025">
-        <img src="https://avatars.githubusercontent.com/liuyingdi2025" width="80px;" style="border-radius: 50%;" alt="Yingdi Liu"/><br />
-        <b>Yingdi Liu</b>
-      </a><br />
-      <sub>Developer</sub><br />
-      <a href="mailto:liuyingdi@chinamobile.com" title="Email Yingdi Liu">📧</a>
-    </td>
-    <td align="center" width="170px">
-      <a href="https://github.com/hqy479">
-        <img src="https://avatars.githubusercontent.com/hqy479" width="80px;" style="border-radius: 50%;" alt="Qiuyang He"/><br />
-        <b>Qiuyang He</b>
-      </a><br />
-      <sub>Developer</sub><br />
-      -
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="170px">
-      <a href="https://github.com/ljx139">
-        <img src="https://avatars.githubusercontent.com/ljx139" width="80px;" style="border-radius: 50%;" alt="LiuJX"/><br />
-        <b>LiuJX</b>
-      </a><br />
-      <sub>Developer</sub><br />
-      -
-    </td>
-    <td align="center" width="170px">
-      <a href="https://github.com/Cjdddd">
-        <img src="https://avatars.githubusercontent.com/Cjdddd" width="80px;" style="border-radius: 50%;" alt="Cjdddd"/><br />
-        <b>Cjdddd</b>
-      </a><br />
-      <sub>Developer</sub><br />
-      <a href="mailto:cuijindong@chinamobile.com" title="Email Cjdddd">📧</a>
-    </td>
-    <td align="center" width="170px"></td>
-    <td align="center" width="170px"></td>
-    <td align="center" width="170px"></td>
-  </tr>
-</table>
+<table><tr><td align="center" width="170px"><a href="https://github.com/tian-cmcc"><img src="https://avatars.githubusercontent.com/tian-cmcc" width="80px;" style="border-radius: 50%;" alt="Tian Tian"/><br /><b>Tian Tian</b></a><br /><sub>Project Lead & Core Dev</sub><br /><a href="mailto:tiantianit@chinamobile.com" title="Email Tian Tian">📧</a></td><td align="center" width="170px"><a href="https://github.com/yilingliang"><img src="https://cdn.jsdelivr.net/gh/yilingliang/picbed/mdings/48301768.gif" width="80px;" style="border-radius: 50%;" alt="Yuhang Liang"/><br /><b>Yuhang Liang</b></a><br /><sub>Developer</sub><br /><a href="mailto:liangyuhang@chinamobile.com" title="Email Yuhang Liang">📧</a></td><td align="center" width="170px"><a href="https://github.com/jianhuishi"><img src="https://avatars.githubusercontent.com/jianhuishi" width="80px;" style="border-radius: 50%;" alt="Jianhui Shi"/><br /><b>Jianhui Shi</b></a><br /><sub>Developer</sub><br /><a href="mailto:shijianhui@chinamobile.com" title="Email Jianhui Shi">📧</a></td><td align="center" width="170px"><a href="https://github.com/liuyingdi2025"><img src="https://avatars.githubusercontent.com/liuyingdi2025" width="80px;" style="border-radius: 50%;" alt="Yingdi Liu"/><br /><b>Yingdi Liu</b></a><br /><sub>Developer</sub><br /><a href="mailto:liuyingdi@chinamobile.com" title="Email Yingdi Liu">📧</a></td><td align="center" width="170px"><a href="https://github.com/hqy479"><img src="https://avatars.githubusercontent.com/hqy479" width="80px;" style="border-radius: 50%;" alt="Qiuyang He"/><br /><b>Qiuyang He</b></a><br /><sub>Developer</sub><br />-</td></tr><tr><td align="center" width="170px"><a href="https://github.com/ljx139"><img src="https://avatars.githubusercontent.com/ljx139" width="80px;" style="border-radius: 50%;" alt="LiuJX"/><br /><b>LiuJX</b></a><br /><sub>Developer</sub><br />-</td><td align="center" width="170px"><a href="https://github.com/Cjdddd"><img src="https://avatars.githubusercontent.com/Cjdddd" width="80px;" style="border-radius: 50%;" alt="Cjdddd"/><br /><b>Cjdddd</b></a><br /><sub>Developer</sub><br /><a href="mailto:cuijindong@chinamobile.com" title="Email Cjdddd">📧</a></td><td align="center" width="170px"><a href="https://github.com/wwy99"><img src="https://avatars.githubusercontent.com/wwy99" width="80px;" style="border-radius: 50%;" alt="Weiyu Wang"/><br /><b>Weiyu Wang</b></a><br /><sub>Developer</sub><br /><a href="mailto:wangweiyu@chinamobile.com" title="Email Weiyu Wang">📧</a></td><td align="center" width="170px"></td><td align="center" width="170px"></td></tr></table>
 
-
----
 
 ## License
 

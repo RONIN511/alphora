@@ -12,6 +12,7 @@ Sandbox 是一个为 AI Agent 设计的安全代码执行环境，提供隔离�
 -  **包管理** - pip 包安装、卸载、查询
 -  **Agent 集成** - 开箱即用的 OpenAI/Anthropic 工具定义
 - ️ **多存储后端** - 本地文件系统、S3、MinIO
+-  **持久化工作空间** - 支持挂载存储后端实现文件持久化
 -  **生命周期管理** - 异步上下文管理器，自动清理
 -  **资源监控** - CPU、内存、磁盘使用监控
 
@@ -49,6 +50,7 @@ async with Sandbox.create_local() as sandbox:
 - [AI Agent 工具集成](#ai-agent-工具集成)
 - [多沙箱管理](#多沙箱管理)
 - [存储后端](#存储后端)
+- [持久化工作空间](#持久化工作空间)
 - [配置管理](#配置管理)
 - [API 参考](#api-参考)
 
@@ -94,6 +96,14 @@ sandbox = Sandbox.create_docker(
 # 从配置创建
 config = SandboxConfig.docker(image="python:3.11", network_enabled=True)
 sandbox = Sandbox.from_config(config)
+
+# 挂载存储后端（持久化工作空间）
+from alphora.sandbox.storage import LocalStorage, StorageConfig
+
+storage = LocalStorage(StorageConfig.local("/data/storage"))
+async with storage:
+    sandbox = Sandbox.create_local(storage=storage)
+    # 文件将持久化到 /data/storage/<sandbox_id>/
 ```
 
 ### 执行结果
@@ -413,78 +423,68 @@ async with Sandbox.create_local() as sandbox:
     
     # 执行代码
     result = await tools.run_python_code("print(1 + 1)")
-    print(result)
-    # {'success': True, 'output': '2\n', 'error': '', 'execution_time': 0.05}
+    print(result)  # {'success': True, 'output': '2\n', 'error': '', ...}
     
     # 保存文件
-    result = await tools.save_file("test.py", "print('hello')")
+    result = await tools.save_file("script.py", "print('test')")
     
     # 安装包
     result = await tools.install_pip_package("requests")
 ```
 
-### OpenAI Function Calling
+### 获取工具定义
 
 ```python
 tools = SandboxTools(sandbox)
 
-# 获取 OpenAI 格式的工具定义
+# OpenAI Function Calling 格式
 openai_tools = tools.get_openai_tools()
 
-# 传给 OpenAI API
-response = await client.chat.completions.create(
-    model="gpt-4",
-    messages=messages,
-    tools=openai_tools
-)
-
-# 执行工具调用
-if response.choices[0].message.tool_calls:
-    for tool_call in response.choices[0].message.tool_calls:
-        result = await tools.execute_tool(
-            tool_call.function.name,
-            json.loads(tool_call.function.arguments)
-        )
-```
-
-### Anthropic Tool Use
-
-```python
-# 获取 Anthropic 格式的工具定义
+# Anthropic Tool Use 格式
 anthropic_tools = tools.get_anthropic_tools()
 
-# 传给 Anthropic API
-response = await client.messages.create(
-    model="claude-3-opus",
-    messages=messages,
-    tools=anthropic_tools
+# 通用格式
+definitions = tools.get_tool_definitions()
+```
+
+### 执行工具调用
+
+```python
+# 从 LLM 响应执行工具
+result = await tools.execute_tool(
+    "run_python_code",
+    {"code": "print(1 + 1)", "timeout": 30}
 )
 ```
 
-### 可用工具列表
+### 完整 Agent 示例
 
-| 工具名称 | 说明 |
-|---------|------|
-| `run_python_code` | 执行 Python 代码 |
-| `run_python_file` | 执行 Python 文件 |
-| `run_shell_command` | 执行 Shell 命令 |
-| `save_file` | 保存文件 |
-| `read_file` | 读取文件 |
-| `delete_file` | 删除文件 |
-| `list_files` | 列出文件 |
-| `file_exists` | 检查文件存在 |
-| `copy_file` | 复制文件 |
-| `move_file` | 移动文件 |
-| `install_pip_package` | 安装 pip 包 |
-| `install_pip_packages` | 批量安装包 |
-| `uninstall_pip_package` | 卸载包 |
-| `list_installed_packages` | 列出已安装包 |
-| `check_package_installed` | 检查包是否安装 |
-| `set_environment_variable` | 设置环境变量 |
-| `get_environment_variable` | 获取环境变量 |
-| `get_sandbox_status` | 获取沙箱状态 |
-| `get_resource_usage` | 获取资源使用情况 |
-| `reset_sandbox` | 重置沙箱 |
+```python
+import openai
+from alphora.sandbox import Sandbox, SandboxTools
+
+async def run_agent():
+    async with Sandbox.create_local() as sandbox:
+        tools = SandboxTools(sandbox)
+        
+        client = openai.AsyncOpenAI()
+        
+        messages = [{"role": "user", "content": "计算 fibonacci(10) 的值"}]
+        
+        response = await client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            tools=tools.get_openai_tools()
+        )
+        
+        if response.choices[0].message.tool_calls:
+            tool_call = response.choices[0].message.tool_calls[0]
+            result = await tools.execute_tool(
+                tool_call.function.name,
+                json.loads(tool_call.function.arguments)
+            )
+            print(result)
+```
 
 ---
 
@@ -498,13 +498,9 @@ from alphora.sandbox import SandboxManager
 async with SandboxManager(base_path="/data/sandboxes") as manager:
     # 创建沙箱
     sandbox1 = await manager.create_sandbox("worker-1")
-    sandbox2 = await manager.create_sandbox("worker-2")
-    
-    # 并行执行
-    import asyncio
-    results = await asyncio.gather(
-        sandbox1.run("print('worker 1')"),
-        sandbox2.run("print('worker 2')")
+    sandbox2 = await manager.create_docker_sandbox(
+        name="worker-2",
+        docker_image="python:3.11"
     )
     
     # 列出沙箱
@@ -553,7 +549,7 @@ await manager.shutdown()
 ### 本地存储
 
 ```python
-from alphora.sandbox.storage import LocalStorage, StorageConfig
+from alphora.sandbox import LocalStorage, StorageConfig
 
 config = StorageConfig.local("/data/storage")
 
@@ -625,6 +621,152 @@ storage = StorageFactory.s3(
     bucket="my-bucket",
     region="us-west-2"
 )
+```
+
+---
+
+## 持久化工作空间
+
+默认情况下，沙箱的工作空间是临时的，停止后可能会被清理。通过挂载存储后端，可以实现工作空间的持久化。
+
+### 基本用法
+
+```python
+from alphora.sandbox import Sandbox
+from alphora.sandbox.storage import LocalStorage, StorageConfig
+
+# 1. 创建并初始化存储后端
+storage = LocalStorage(StorageConfig.local("/data/storage"))
+
+# 2. 挂载存储到沙箱
+async with storage:
+    sandbox = Sandbox.create_local(storage=storage)
+    
+    async with sandbox:
+        # 写入文件 - 实际存储在 /data/storage/<sandbox_id>/data.txt
+        await sandbox.write_file("data.txt", "Hello, World!")
+        
+        # 执行代码
+        result = await sandbox.run("print(open('data.txt').read())")
+        print(result.stdout)  # Hello, World!
+    
+    # 沙箱停止后，文件仍然保留在存储后端中
+```
+
+### 便捷方法
+
+```python
+from alphora.sandbox import Sandbox
+from alphora.sandbox.storage import LocalStorage, StorageConfig
+
+storage = LocalStorage(StorageConfig.local("/data/storage"))
+
+async with storage:
+    # 使用 create_with_storage 便捷方法
+    async with Sandbox.create_with_storage(storage) as sandbox:
+        await sandbox.write_file("script.py", "print('persistent!')")
+        await sandbox.execute_file("script.py")
+```
+
+### 持久化工作流
+
+当需要跨多次运行保留文件时，使用固定的 `sandbox_id`：
+
+```python
+from alphora.sandbox import Sandbox
+from alphora.sandbox.storage import LocalStorage, StorageConfig
+
+storage = LocalStorage(StorageConfig.local("/data/storage"))
+
+# 第一次运行 - 创建文件
+async with storage:
+    sandbox = Sandbox.create_local(
+        sandbox_id="my-project",  # 指定固定 ID
+        storage=storage
+    )
+    async with sandbox:
+        await sandbox.write_file("counter.txt", "0")
+        print("File created!")
+
+# 第二次运行 - 文件仍然存在
+async with storage:
+    sandbox = Sandbox.create_local(
+        sandbox_id="my-project",  # 相同的 ID
+        storage=storage
+    )
+    async with sandbox:
+        content = await sandbox.read_file("counter.txt")
+        print(f"Counter: {content}")  # Counter: 0
+        
+        # 更新文件
+        await sandbox.write_file("counter.txt", str(int(content) + 1))
+```
+
+### Docker 后端配合存储
+
+```python
+from alphora.sandbox import Sandbox
+from alphora.sandbox.storage import LocalStorage, StorageConfig
+
+storage = LocalStorage(StorageConfig.local("/data/storage"))
+
+async with storage:
+    sandbox = Sandbox.create_docker(
+        storage=storage,
+        docker_image="python:3.11-slim"
+    )
+    async with sandbox:
+        # Docker 容器的 /workspace 目录挂载到 /data/storage/<sandbox_id>/
+        await sandbox.write_file("app.py", "print('Hello from Docker!')")
+        result = await sandbox.execute_file("app.py")
+        print(result.stdout)
+```
+
+### 显式清理存储
+
+默认情况下，使用存储后端的沙箱停止时不会删除文件（持久化特性）。如需手动清理：
+
+```python
+sandbox = Sandbox.create_local(storage=storage)
+
+async with sandbox:
+    await sandbox.write_file("temp.txt", "temporary data")
+
+# 沙箱停止后，手动清理存储中的文件
+await sandbox.cleanup_storage(force=True)
+```
+
+### 存储挂载的文件结构
+
+当使用 `StorageConfig.local("/data/storage")` 并创建沙箱时：
+
+```
+/data/storage/
+├── <sandbox_id_1>/           # 第一个沙箱的工作空间
+│   ├── script.py
+│   └── data/
+│       └── output.csv
+├── <sandbox_id_2>/           # 第二个沙箱的工作空间
+│   └── app.py
+└── ...
+```
+
+每个沙箱的工作空间对应存储下的一个以 `sandbox_id` 命名的子目录。
+
+### 检查存储挂载状态
+
+```python
+sandbox = Sandbox.create_local(storage=storage)
+
+# 检查是否使用了存储后端
+print(sandbox.using_storage)  # True
+
+# 获取关联的存储后端
+print(sandbox.storage)  # LocalStorage(...)
+
+# 获取状态（包含 using_storage 字段）
+status = await sandbox.get_status()
+print(status["using_storage"])  # True
 ```
 
 ---
@@ -719,10 +861,27 @@ config = config_from_file("sandbox.yaml")
 
 | 方法 | 说明 |
 |------|------|
-| `create_local(base_path, resource_limits, security_policy)` | 创建本地沙箱 |
-| `create_docker(base_path, docker_image, resource_limits, security_policy)` | 创建 Docker 沙箱 |
-| `from_config(config)` | 从配置创建沙箱 |
+| `create_local(base_path, resource_limits, security_policy, storage)` | 创建本地沙箱 |
+| `create_docker(base_path, docker_image, resource_limits, security_policy, storage)` | 创建 Docker 沙箱 |
+| `from_config(config, storage)` | 从配置创建沙箱 |
 | `create(backend_type, **kwargs)` | 上下文管理器工厂 |
+| `create_with_storage(storage, backend_type, **kwargs)` | 带存储后端的上下文管理器工厂 |
+
+#### 属性
+
+| 属性 | 说明 |
+|------|------|
+| `sandbox_id` | 沙箱唯一标识 |
+| `name` | 沙箱名称 |
+| `status` | 当前状态 |
+| `is_running` | 是否运行中 |
+| `backend_type` | 后端类型 |
+| `workspace_path` | 工作空间路径 |
+| `resource_limits` | 资源限制配置 |
+| `security_policy` | 安全策略配置 |
+| `backend` | 执行后端实例 |
+| `storage` | 关联的存储后端（如有） |
+| `using_storage` | 是否使用存储后端 |
 
 #### 生命周期
 
@@ -733,6 +892,7 @@ config = config_from_file("sandbox.yaml")
 | `restart()` | 重启沙箱 |
 | `destroy()` | 销毁沙箱 |
 | `health_check()` | 健康检查 |
+| `cleanup_storage(force)` | 清理存储中的文件（仅存储后端模式） |
 
 #### 代码执行
 
