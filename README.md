@@ -290,7 +290,7 @@ For detailed system design, component relationships, and implementation patterns
 
 | Component | Purpose |
 |-----------|---------|
-| [Agent](./docs/agent_readme.md) | Core agent lifecycle, derivation, ReAct loop |
+| [Agent](docs/cn/agent_readme.md) | Core agent lifecycle, derivation, ReAct loop |
 | [Prompter](./docs/prompter_readme.md) | Jinja2 templates, LLM invocation, streaming |
 | [Models](./docs/model_readme.md) | LLM interface, multimodal, load balancing |
 | [Tools](./docs/tool_readme.md) | @tool decorator, registry, parallel execution |
