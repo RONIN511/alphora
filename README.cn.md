@@ -354,7 +354,3 @@ llm = OpenAILike(
 详情请参阅 [LICENSE](https://www.google.com/search?q=./LICENSE)。
 
 贡献代码前需要签署 [贡献者许可协议 (CLA)](https://www.google.com/search?q=CLA.md)。
-
----
-
-我已为您完成了 README 的翻译，并在顶部的 Python、License 和 PRs 徽章上添加了对应的英文链接。如果您需要我为您生成此项目的架构图或者其他文档，请随时告诉我。
