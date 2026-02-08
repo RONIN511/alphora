@@ -1,5 +1,7 @@
 import threading
 from typing import Dict, List, Optional, Callable, Union, Any
+
+from alphora.hooks import HookEvent, HookContext, HookManager, build_manager
 from .core import Tool
 from .exceptions import ToolRegistrationError
 
@@ -9,9 +11,23 @@ class ToolRegistry:
     工具注册中心
     负责管理所有的 Tool 实例，处理命名冲突，并生成聚合的 OpenAI Tools Schema。
     """
-    def __init__(self):
+    def __init__(
+            self,
+            hooks: Optional[Union[HookManager, Dict[Any, Any]]] = None,
+            before_register: Optional[Callable] = None,
+            after_register: Optional[Callable] = None,
+    ):
         self._tools: Dict[str, Tool] = {}
         self._lock = threading.RLock()
+        self._hooks = build_manager(
+            hooks,
+            short_map={
+                "before_register": HookEvent.TOOLS_BEFORE_REGISTER,
+                "after_register": HookEvent.TOOLS_AFTER_REGISTER,
+            },
+            before_register=before_register,
+            after_register=after_register,
+        )
 
     def register(
             self,
@@ -38,6 +54,16 @@ class ToolRegistry:
             else:
                 raise ToolRegistrationError(f"Invalid item type: {type(tool_or_func)}. Must be Tool or Callable.")
 
+            ctx = HookContext(
+                event=HookEvent.TOOLS_BEFORE_REGISTER,
+                component="tools",
+                data={
+                    "tool": tool,
+                    "tool_name": tool.name,
+                },
+            )
+            self._hooks.emit_sync(HookEvent.TOOLS_BEFORE_REGISTER, ctx)
+
             # 检查命名冲突
             if tool.name in self._tools:
                 # 策略：严格报错。不建议自动加后缀，这会导致大模型调用不可预测。
@@ -48,6 +74,16 @@ class ToolRegistry:
                 )
 
             self._tools[tool.name] = tool
+
+            ctx = HookContext(
+                event=HookEvent.TOOLS_AFTER_REGISTER,
+                component="tools",
+                data={
+                    "tool": tool,
+                    "tool_name": tool.name,
+                },
+            )
+            self._hooks.emit_sync(HookEvent.TOOLS_AFTER_REGISTER, ctx)
             return tool
 
     def get_tool(self, name: str) -> Optional[Tool]:

@@ -41,13 +41,14 @@ if getattr(response, 'has_tool_calls', False):
 import json
 import asyncio
 import logging
-from typing import List, Dict, Any, Union, Optional
+from typing import List, Dict, Any, Union, Optional, Callable
 from pydantic import BaseModel
 
 from .core import Tool
 from .registry import ToolRegistry
 from .exceptions import ToolValidationError, ToolExecutionError
 from alphora.models.llms.types import ToolCall
+from alphora.hooks import HookEvent, HookContext, HookManager, build_manager
 
 logger = logging.getLogger(__name__)
 
@@ -114,12 +115,30 @@ class ToolExecutor:
             memory.add_tool_result(**result.to_memory_args())
     """
 
-    def __init__(self, registry: ToolRegistry):
+    def __init__(
+            self,
+            registry: ToolRegistry,
+            hooks: Optional[Union[HookManager, Dict[Any, Any]]] = None,
+            before_execute: Optional[Callable] = None,
+            after_execute: Optional[Callable] = None,
+            on_error: Optional[Callable] = None,
+    ):
         """
         Args:
             registry: 工具注册表
         """
         self.registry = registry
+        self._hooks = build_manager(
+            hooks,
+            short_map={
+                "before_execute": HookEvent.TOOLS_BEFORE_EXECUTE,
+                "after_execute": HookEvent.TOOLS_AFTER_EXECUTE,
+                "on_error": HookEvent.TOOLS_ON_ERROR,
+            },
+            before_execute=before_execute,
+            after_execute=after_execute,
+            on_error=on_error,
+        )
 
     async def execute(
             self,
@@ -215,13 +234,29 @@ class ToolExecutor:
             # 1. 查找工具
             tool = self.registry.get_tool(tool_name)
             if not tool:
-                return ToolExecutionResult(
+                error_result = ToolExecutionResult(
                     tool_call_id=call_id,
                     tool_name=tool_name,
                     content=f"Error: Tool '{tool_name}' not found in registry.",
                     status="error",
                     error_type="ToolNotFoundError"
                 )
+                await self._hooks.emit(
+                    HookEvent.TOOLS_ON_ERROR,
+                    HookContext(
+                        event=HookEvent.TOOLS_ON_ERROR,
+                        component="tools",
+                        data={
+                            "tool_call": tool_call,
+                            "tool_call_id": call_id,
+                            "tool_name": tool_name,
+                            "tool_args": None,
+                            "tool": None,
+                            "tool_result": error_result,
+                        },
+                    ),
+                )
+                return error_result
 
             # 2. 解析 JSON 参数
             try:
@@ -230,15 +265,45 @@ class ToolExecutor:
                 else:
                     arguments = arguments_str or {}
             except json.JSONDecodeError as e:
-                return ToolExecutionResult(
+                error_result = ToolExecutionResult(
                     tool_call_id=call_id,
                     tool_name=tool_name,
                     content=f"Error: Invalid JSON arguments - {str(e)}",
                     status="error",
                     error_type="JSONDecodeError"
                 )
+                await self._hooks.emit(
+                    HookEvent.TOOLS_ON_ERROR,
+                    HookContext(
+                        event=HookEvent.TOOLS_ON_ERROR,
+                        component="tools",
+                        data={
+                            "tool_call": tool_call,
+                            "tool_call_id": call_id,
+                            "tool_name": tool_name,
+                            "tool_args": None,
+                            "tool": tool,
+                            "tool_result": error_result,
+                        },
+                    ),
+                )
+                return error_result
 
             # 3. 执行工具
+            before_ctx = HookContext(
+                event=HookEvent.TOOLS_BEFORE_EXECUTE,
+                component="tools",
+                data={
+                    "tool_call": tool_call,
+                    "tool_call_id": call_id,
+                    "tool_name": tool_name,
+                    "tool_args": arguments,
+                    "tool": tool,
+                },
+            )
+            before_ctx = await self._hooks.emit(HookEvent.TOOLS_BEFORE_EXECUTE, before_ctx)
+            arguments = before_ctx.data.get("tool_args", arguments)
+
             result_data = await tool.arun(**arguments)
 
             # 4. 序列化结果
@@ -249,42 +314,104 @@ class ToolExecutor:
 
             logger.info(f"Tool {tool_name} executed successfully")
 
-            return ToolExecutionResult(
+            execution_result = ToolExecutionResult(
                 tool_call_id=call_id,
                 tool_name=tool_name,
                 content=content,
                 status="success"
             )
+            after_ctx = HookContext(
+                event=HookEvent.TOOLS_AFTER_EXECUTE,
+                component="tools",
+                data={
+                    "tool_call": tool_call,
+                    "tool_call_id": call_id,
+                    "tool_name": tool_name,
+                    "tool_args": arguments,
+                    "tool": tool,
+                    "tool_result": execution_result,
+                },
+            )
+            after_ctx = await self._hooks.emit(HookEvent.TOOLS_AFTER_EXECUTE, after_ctx)
+            return after_ctx.data.get("tool_result", execution_result)
 
         except ToolValidationError as e:
             logger.warning(f"Validation failed for {tool_name}: {e}")
-            return ToolExecutionResult(
+            error_result = ToolExecutionResult(
                 tool_call_id=call_id,
                 tool_name=tool_name,
                 content=f"Error: Arguments validation failed - {str(e)}",
                 status="error",
                 error_type="ValidationError"
             )
+            await self._hooks.emit(
+                HookEvent.TOOLS_ON_ERROR,
+                HookContext(
+                    event=HookEvent.TOOLS_ON_ERROR,
+                    component="tools",
+                    data={
+                        "tool_call": tool_call,
+                        "tool_call_id": call_id,
+                        "tool_name": tool_name,
+                        "tool_args": arguments_str,
+                        "tool": None,
+                        "tool_result": error_result,
+                    },
+                ),
+            )
+            return error_result
 
         except ToolExecutionError as e:
             logger.error(f"Runtime error in {tool_name}: {e}")
-            return ToolExecutionResult(
+            error_result = ToolExecutionResult(
                 tool_call_id=call_id,
                 tool_name=tool_name,
                 content=f"Error: Execution failed - {str(e)}",
                 status="error",
                 error_type="ExecutionError"
             )
+            await self._hooks.emit(
+                HookEvent.TOOLS_ON_ERROR,
+                HookContext(
+                    event=HookEvent.TOOLS_ON_ERROR,
+                    component="tools",
+                    data={
+                        "tool_call": tool_call,
+                        "tool_call_id": call_id,
+                        "tool_name": tool_name,
+                        "tool_args": arguments_str,
+                        "tool": None,
+                        "tool_result": error_result,
+                    },
+                ),
+            )
+            return error_result
 
         except Exception as e:
             logger.exception(f"Unexpected error in {tool_name}")
-            return ToolExecutionResult(
+            error_result = ToolExecutionResult(
                 tool_call_id=call_id,
                 tool_name=tool_name,
                 content=f"Error: Unexpected internal error - {str(e)}",
                 status="error",
                 error_type="InternalError"
             )
+            await self._hooks.emit(
+                HookEvent.TOOLS_ON_ERROR,
+                HookContext(
+                    event=HookEvent.TOOLS_ON_ERROR,
+                    component="tools",
+                    data={
+                        "tool_call": tool_call,
+                        "tool_call_id": call_id,
+                        "tool_name": tool_name,
+                        "tool_args": arguments_str,
+                        "tool": None,
+                        "tool_result": error_result,
+                    },
+                ),
+            )
+            return error_result
 
     def execute_sync(
             self,

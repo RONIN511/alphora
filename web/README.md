@@ -1,64 +1,55 @@
 # AgentChat Frontend
 
-智能体框架自带对话前端。零依赖启动，支持流式渲染、多 content_type 差异化展示、可视化样式配置。
+Professional AI agent chat interface with multi-content-type rendering, terminal panel, and visual style editor.
 
-## 启动
+## Quick Start
 
 ```bash
-python frontend/serve.py
-python frontend/serve.py --api http://localhost:8000/v1/chat/completions
-python frontend/serve.py --port 3000 --no-browser
+# Basic (local API)
+python serve.py
+
+# With remote API proxy (solves CORS!)
+python serve.py --api http://192.168.1.100:8000
+# Then set endpoint to: /api/v1/chat/completions
 ```
 
-## 功能
+Opens `http://localhost:8818` automatically.
 
-- **流式 SSE 渲染** — 兼容 OpenAI chat.completion.chunk 格式
-- **多 content_type** — text / code / bash / json / html / image / table / thinking / tool_call 等
-- **终端面板** — bash / stdout / stderr 自动路由到右侧深色终端面板
-- **文件上传** — 点击、拖拽、粘贴上传，支持图片 base64 编码发送
-- **渲染器配置面板** — 预设样式一键切换 + 原子样式点选组合 + 自定义 CSS 覆盖 + 实时预览
+## Features
 
+- **SSE Streaming** — OpenAI-compatible, real-time token rendering
+- **Multi Content Types** — text, markdown, code, terminal, JSON, HTML, image, table, etc.
+- **Terminal Panel** — dark-themed side panel for bash/stdout/stderr
+- **File Upload** — drag-drop, paste, or click; images sent as base64
+- **Conversation History** — localStorage persistence, create/delete/switch
+- **Code Copy** — hover-reveal copy button on all code blocks
+- **Renderer Studio** — full visual editor with presets, atoms, live preview
+- **Reverse Proxy** — built-in `serve.py` proxy to bypass CORS for remote APIs
+- **Keyboard Shortcuts** — ⌘K focus, ⌘N new chat
 
-## 自定义渲染器
+## Remote API (CORS Fix)
 
-### 方式一：编辑 renderer_config.js
+Browser blocks cross-origin requests. Use the built-in proxy:
 
-```javascript
-const RENDERER_CONFIG = {
-  my_type: {
-    label: "分析结果",
-    component: "markdown",    // text | markdown | code | terminal | json | html | image | table
-    layout: "inline",         // inline | panel
-    icon: "📊",
-    preset: "淡蓝信息",       // 一键应用预设
-    atoms: ["text-sm", "font-sans", "color-accent", "bg-blue-50", "border-l-blue", "p-4", "rounded-md"],
-    style: {},                // 自定义 CSS 覆盖
-  },
-};
+```bash
+python serve.py --api http://YOUR_SERVER:PORT
 ```
 
-### 方式二：界面内配置
+This proxies `/api/*` → your server, same-origin = no CORS issues.
+Frontend endpoint: `/api/v1/chat/completions`
 
-点击顶栏齿轮图标 → 左侧选择 content_type → 右侧操作：
-1. 选择预设样式卡片一键应用
-2. 点选原子样式 chip 自由组合
-3. 填写 CSS 覆盖值精细调整
-4. 底部实时预览效果
+## Files
 
-### 后端集成
+| File | Description |
+|------|-------------|
+| `index.html` | Single-file SPA (HTML + CSS + JS) |
+| `renderer_config.js` | Style atoms, presets, content type config |
+| `serve.py` | Dev server with reverse proxy |
 
-```python
-streamer = DataStreamer(model_name="my-agent")
-await streamer.send_data("text", "分析结论如下...")
-await streamer.send_data("bash", "pip install pandas")
-await streamer.send_data("stdout", "Successfully installed")
-await streamer.send_data("code", "print('hello')")
-await streamer.stop()
-```
+## SSE Format
 
-嵌入到已有 FastAPI 项目:
-
-```python
-from fastapi.staticfiles import StaticFiles
-app.mount("/chat", StaticFiles(directory="frontend", html=True), name="chat")
+```json
+data: {"choices":[{"delta":{"content_type":"text","content":"Hello"}}]}
+data: {"choices":[{"delta":{"content_type":"code","content":"print('hi')"}}]}
+data: [DONE]
 ```

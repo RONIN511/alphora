@@ -1,0 +1,274 @@
+# Copyright 2026 China Mobile Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Skill 内置工具集
+
+提供 LLM 可调用的工具函数，用于在 ReAct 循环中与 Skills 交互。
+这些工具实现了渐进式披露的 Phase 2 和 Phase 3：
+
+- read_skill: 加载 Skill 完整指令（Phase 2）
+- read_skill_resource: 读取资源文件（Phase 3）
+- list_skill_resources: 列出资源目录
+- run_skill_script: 执行脚本（需 Sandbox）
+
+工具创建方式：
+    tools = create_skill_tools(manager)
+    tools = create_skill_tools(manager, sandbox=sandbox)
+
+与 ToolRegistry 集成：
+    for t in create_skill_tools(manager):
+        registry.register(t)
+"""
+
+from typing import List, Optional, TYPE_CHECKING
+import logging
+
+from .manager import SkillManager
+from .exceptions import SkillError
+from alphora.sandbox import Sandbox
+from alphora.tools.decorators import Tool
+
+logger = logging.getLogger(__name__)
+
+
+def create_skill_tools(
+    manager: SkillManager,
+    sandbox: Optional[Sandbox] = None,
+) -> list:
+    """
+    创建 Skill 交互工具集
+
+    根据传入的 SkillManager 和可选的 Sandbox，生成一组可被 LLM 调用的工具。
+    这些工具会被注册到 ToolRegistry，通过 OpenAI Function Calling 协议暴露给 LLM。
+
+    Args:
+        manager: SkillManager 实例，提供 Skill 数据访问
+        sandbox: 可选的 Sandbox 实例，传入后会额外生成脚本执行工具
+
+    Returns:
+        Tool 实例列表，可直接注册到 ToolRegistry
+
+    Example:
+        >>> manager = SkillManager(["./skills"])
+        >>> tools = create_skill_tools(manager)
+        >>> registry = ToolRegistry()
+        >>> for t in tools:
+        ...     registry.register(t)
+    """
+    from alphora.tools.decorators import tool
+
+    # Tool 1: 读取并激活 Skill
+
+    @tool(
+        name="read_skill",
+        description=(
+            "Load the full instructions of a specific skill. "
+            "Call this when you need to use a skill's expertise to complete a task. "
+            "Returns the complete SKILL.md content with step-by-step instructions."
+        )
+    )
+    def read_skill(skill_name: str) -> str:
+        """
+        读取并激活指定的 Skill，返回其完整指令内容。
+
+        Args:
+            skill_name: Skill 名称（如 'pdf-processing'、'data-analysis'）
+
+        Returns:
+            Skill 的完整 Markdown 指令内容
+        """
+        try:
+            content = manager.activate(skill_name)
+            return content.instructions
+        except SkillError as e:
+            return f"Error: {e}"
+
+    # ── Tool 2: 读取资源文件 ──
+
+    @tool(
+        name="read_skill_resource",
+        description=(
+            "Read a specific resource file from a skill's directory. "
+            "Use this to access reference documentation, templates, or script source code "
+            "within a skill. Provide the skill name and the relative file path."
+        )
+    )
+    def read_skill_resource(skill_name: str, resource_path: str) -> str:
+        """
+        读取 Skill 中的资源文件内容。
+
+        Args:
+            skill_name: Skill 名称
+            resource_path: 相对于 Skill 目录的文件路径（如 'references/FORMS.md'、'scripts/extract.py'）
+
+        Returns:
+            资源文件的文本内容
+        """
+        try:
+            resource = manager.read_resource(skill_name, resource_path)
+            return resource.content
+        except SkillError as e:
+            return f"Error: {e}"
+
+    # ── Tool 3: 列出资源目录 ──
+
+    @tool(
+        name="list_skill_resources",
+        description=(
+            "List all available resource files in a skill's directory. "
+            "Use this to explore what scripts, references, and assets a skill provides "
+            "before deciding which ones to read."
+        )
+    )
+    def list_skill_resources(skill_name: str) -> str:
+        """
+        列出 Skill 目录下的所有资源文件。
+
+        Args:
+            skill_name: Skill 名称
+
+        Returns:
+            格式化的目录结构字符串
+        """
+        try:
+            info = manager.list_resources(skill_name)
+            return info.to_display()
+        except SkillError as e:
+            return f"Error: {e}"
+
+    tools = [read_skill, read_skill_resource, list_skill_resources]
+
+    # ── Tool 4: 执行脚本（仅在有 Sandbox 时可用）──
+
+    if sandbox is not None:
+        @tool(
+            name="run_skill_script",
+            description=(
+                "Execute a script from a skill's scripts/ directory in a sandbox environment. "
+                "Use this when skill instructions tell you to run a specific script. "
+                "The script runs in an isolated sandbox with its output returned."
+            )
+        )
+        async def run_skill_script(
+            skill_name: str,
+            script_path: str,
+            args: str = "",
+        ) -> str:
+            """
+            在沙箱中执行 Skill 的脚本。
+
+            Args:
+                skill_name: Skill 名称
+                script_path: 脚本路径（如 'extract.py' 或 'scripts/extract.py'）
+                args: 传递给脚本的命令行参数
+
+            Returns:
+                脚本执行的标准输出和标准错误
+            """
+            try:
+                full_path = manager.get_script_path(skill_name, script_path)
+
+                # 根据文件扩展名决定执行方式
+                suffix = full_path.suffix.lower()
+                if suffix == ".py":
+                    cmd = f"python {full_path} {args}".strip()
+                elif suffix == ".sh":
+                    cmd = f"bash {full_path} {args}".strip()
+                elif suffix == ".js":
+                    cmd = f"node {full_path} {args}".strip()
+                else:
+                    cmd = f"{full_path} {args}".strip()
+
+                result = await sandbox.run_shell_command(cmd)
+
+                # 组合输出
+                output_parts = []
+                if hasattr(result, 'stdout') and result.stdout:
+                    output_parts.append(result.stdout)
+                if hasattr(result, 'stderr') and result.stderr:
+                    output_parts.append(f"[stderr] {result.stderr}")
+
+                return "\n".join(output_parts) if output_parts else "(no output)"
+
+            except SkillError as e:
+                return f"Error: {e}"
+            except Exception as e:
+                return f"Script execution failed: {e}"
+
+        tools.append(run_skill_script)
+
+    return tools
+
+
+def create_filesystem_skill_tools(manager: SkillManager) -> list:
+    """
+    创建基于文件系统的 Skill 工具（适用于有 bash 能力的 Agent）
+
+    与 create_skill_tools 不同，这组工具不封装 SkillManager 的方法，
+    而是直接提供文件路径信息，让 LLM 通过 bash/shell 工具自行读取文件。
+    更接近 Claude Code 的原生 Skill 使用方式。
+
+    Args:
+        manager: SkillManager 实例
+
+    Returns:
+        Tool 实例列表
+    """
+    from alphora.tools.decorators import tool
+
+    @tool(
+        name="get_skill_path",
+        description=(
+            "Get the filesystem path to a skill's SKILL.md file. "
+            "Use this to locate a skill so you can read it with bash commands. "
+            "Returns the absolute path."
+        )
+    )
+    def get_skill_path(skill_name: str) -> str:
+        """
+        获取 Skill 的 SKILL.md 文件路径。
+
+        Args:
+            skill_name: Skill 名称
+
+        Returns:
+            SKILL.md 的绝对路径
+        """
+        try:
+            props = manager.get_skill(skill_name)
+            if props is None:
+                available = ", ".join(manager.skill_names)
+                return f"Error: Skill '{skill_name}' not found. Available: {available}"
+            return str(props.skill_md_path)
+        except SkillError as e:
+            return f"Error: {e}"
+
+    @tool(
+        name="get_skill_directory",
+        description=(
+            "Get the filesystem path to a skill's root directory. "
+            "Returns the absolute path to the skill directory "
+            "that contains SKILL.md, scripts/, references/, and assets/."
+        )
+    )
+    def get_skill_directory(skill_name: str) -> str:
+        """
+        获取 Skill 的目录路径。
+
+        Args:
+            skill_name: Skill 名称
+
+        Returns:
+            Skill 目录的绝对路径
+        """
+        try:
+            props = manager.get_skill(skill_name)
+            if props is None:
+                available = ", ".join(manager.skill_names)
+                return f"Error: Skill '{skill_name}' not found. Available: {available}"
+            return str(props.path)
+        except SkillError as e:
+            return f"Error: {e}"
+
+    return [get_skill_path, get_skill_directory]

@@ -29,7 +29,7 @@ class ImageAnalysisInput(BaseModel):
     mode: str = Field("describe", description="分析模式: describe(描述)/ocr(文字识别)/qa(问答)/extract(结构化提取)")
 
 
-class ImageReaderTool:
+class ImageReader:
     """
     图片读取与分析工具，读取沙箱内的图片文件
 
@@ -99,10 +99,10 @@ class ImageReaderTool:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
         ext = path.suffix.lower()
-        if ext not in ImageReaderTool.SUPPORTED_FORMATS:
+        if ext not in ImageReader.SUPPORTED_FORMATS:
             raise ValueError(
                 f"不支持的图片格式: {ext}\n"
-                f"支持的格式: {', '.join(sorted(ImageReaderTool.SUPPORTED_FORMATS))}"
+                f"支持的格式: {', '.join(sorted(ImageReader.SUPPORTED_FORMATS))}"
             )
 
         with open(path, "rb") as f:
@@ -451,7 +451,7 @@ if __name__ == "__main__":
 
         await sb.start()
 
-        tool = ImageReaderTool(
+        tool = ImageReader(
             llm=llm,
             sandbox=sb
         )

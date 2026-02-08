@@ -22,9 +22,9 @@ from .viewers.text import TextViewer
 from .utils.common import find_file, list_available_files, get_file_info
 
 
-class FileViewerAgent:
+class FileViewer:
     """
-    通用文件查看器 Agent
+    通用文件查看器
     为 AI Agent 提供统一的文件查看接口，支持多种文件格式。
     使用示例：
         agent = FileViewerAgent(base_dir="/path/to/sandbox")
