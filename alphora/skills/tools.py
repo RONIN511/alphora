@@ -84,8 +84,7 @@ def create_skill_tools(
         except SkillError as e:
             return f"Error: {e}"
 
-    # ── Tool 2: 读取资源文件 ──
-
+    # Tool 2: 读取资源文件
     @tool(
         name="read_skill_resource",
         description=(
@@ -111,8 +110,7 @@ def create_skill_tools(
         except SkillError as e:
             return f"Error: {e}"
 
-    # ── Tool 3: 列出资源目录 ──
-
+    # Tool 3: 列出资源目录
     @tool(
         name="list_skill_resources",
         description=(
@@ -139,8 +137,7 @@ def create_skill_tools(
 
     tools = [read_skill, read_skill_resource, list_skill_resources]
 
-    # ── Tool 4: 执行脚本（仅在有 Sandbox 时可用）──
-
+    # Tool 4: 执行脚本（仅在有 Sandbox 时可用）
     if sandbox is not None:
         @tool(
             name="run_skill_script",
