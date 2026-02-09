@@ -241,7 +241,7 @@ input,select,textarea{font-family:inherit;outline:none}
 .apop-overlay.open{display:block}
 .apop h4{font-size:14px;font-weight:600;color:var(--t1);margin-bottom:14px}
 .apop.open{display:block}
-@keyframes apopIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes apopIn{from{opacity:0;transform:translate(-50%,-54%)}to{opacity:1;transform:translate(-50%,-50%)}}
 .ar2{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .ar2:last-of-type{margin-bottom:0}
 .ar2 label{font-size:12px;color:var(--t3);width:64px;flex:0 0 64px;font-weight:600}
@@ -316,8 +316,65 @@ input,select,textarea{font-family:inherit;outline:none}
 .loading-dots span:nth-child(3){animation-delay:.3s}
 @keyframes ld{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
 
+/* Config prompt modal */
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.cfg-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:299;display:none;animation:fadeIn .2s ease}
+.cfg-modal-overlay.open{display:flex;align-items:center;justify-content:center}
+.cfg-modal{background:var(--white);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow-lg);padding:28px 26px 22px;width:420px;max-width:calc(100vw - 32px);animation:apopIn .25s ease}
+.cfg-modal-icon{width:48px;height:48px;border-radius:14px;background:var(--abg);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.cfg-modal-icon svg{width:24px;height:24px;color:var(--accent)}
+.cfg-modal h3{font-size:16px;font-weight:700;color:var(--t1);margin-bottom:6px}
+.cfg-modal p{font-size:13px;color:var(--t3);line-height:1.7;margin-bottom:18px}
+.cfg-modal-acts{display:flex;gap:10px;justify-content:flex-end}
+.cfg-modal-acts button{padding:8px 20px;border-radius:10px;font-size:13px;font-weight:600;transition:all .2s ease}
+.cfg-modal-acts .btn-later{color:var(--t3);background:var(--bg);border:1px solid var(--border)}
+.cfg-modal-acts .btn-later:hover{background:var(--bg2);color:var(--t2)}
+.cfg-modal-acts .btn-go{color:#fff;background:linear-gradient(135deg,var(--accent),#a855f7);box-shadow:0 2px 8px rgba(99,102,241,.3)}
+.cfg-modal-acts .btn-go:hover{box-shadow:0 4px 12px rgba(99,102,241,.4);transform:translateY(-1px)}
+
+/* Docs button (top-right) */
+.docs-btn{position:fixed;top:14px;right:14px;z-index:110;display:flex;align-items:center;gap:6px;padding:0;border:none;background:none;box-shadow:none;font-size:13px;font-weight:500;color:var(--t4);transition:color .2s ease;cursor:pointer}
+.docs-btn:hover{color:var(--accent)}
+.docs-btn svg{width:15px;height:15px}
+
+/* ===== DOCS PAGE ===== */
+.pg-docs{display:flex;flex-direction:row;background:var(--bg)}
+.doc-side{width:260px;flex:0 0 260px;background:var(--white);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.doc-side-head{padding:16px 16px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.doc-side-head h3{font-size:13px;font-weight:700;color:var(--t1);display:flex;align-items:center;gap:8px}
+.doc-side-head h3 svg{width:16px;height:16px;color:var(--accent)}
+.doc-back{font-size:12px;color:var(--t3);cursor:pointer;padding:4px 10px;border-radius:6px;transition:all .15s}
+.doc-back:hover{color:var(--accent);background:var(--abg)}
+.doc-tree{flex:1 1 0%;overflow-y:auto;padding:8px 8px 12px}
+.doc-tree::-webkit-scrollbar{width:3px}
+.doc-tree::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.dt-dir{margin-bottom:2px}
+.dt-dir-label{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--t2);cursor:pointer;transition:all .15s;user-select:none}
+.dt-dir-label:hover{background:rgba(0,0,0,.03);color:var(--t1)}
+[data-theme="dark"] .dt-dir-label:hover{background:rgba(255,255,255,.04)}
+.dt-dir-label svg{width:14px;height:14px;color:var(--t4);transition:transform .2s ease;flex:0 0 14px}
+.dt-dir-label.open svg{transform:rotate(90deg)}
+.dt-children{padding-left:12px;overflow:hidden;transition:max-height .25s ease}
+.dt-children.collapsed{max-height:0!important}
+.dt-file{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;font-size:13px;color:var(--t3);cursor:pointer;transition:all .15s}
+.dt-file:hover{background:rgba(0,0,0,.04);color:var(--t1)}
+[data-theme="dark"] .dt-file:hover{background:rgba(255,255,255,.05)}
+.dt-file.on{background:var(--abg);color:var(--accent);font-weight:500}
+.dt-file svg{width:14px;height:14px;opacity:.45;flex:0 0 14px}
+.doc-content{flex:1 1 0%;overflow-y:auto;padding:32px 48px;min-width:0}
+.doc-content::-webkit-scrollbar{width:6px}
+.doc-content::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.doc-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--t4);gap:12px}
+.doc-empty svg{width:48px;height:48px;opacity:.3}
+.doc-empty span{font-size:14px}
+.doc-article{max-width:800px;margin:0 auto}
+.doc-article-path{font-size:12px;color:var(--t4);font-family:var(--mono);margin-bottom:16px;padding:6px 12px;background:var(--bg);border-radius:8px;display:inline-block}
+
 /* Responsive */
 @media(max-width:900px){
+  .doc-side{width:200px;flex:0 0 200px}
+  .doc-content{padding:20px 16px}
+  .docs-btn{padding:6px 10px;font-size:12px}
   .hsb{display:none!important}.tp{width:100vw}.sb-toggle{display:none!important}
   .mi{padding:0 16px}.ina{padding:8px 12px 14px}
   .macts{display:none!important}
@@ -338,6 +395,19 @@ input,select,textarea{font-family:inherit;outline:none}
 <div id="app">
 <div id="nav"></div>
 <button class="sb-toggle" id="bExpand" title="展开侧栏" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+<button class="docs-btn" id="docsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>文档中心</button>
+<!-- Config prompt modal -->
+<div class="cfg-modal-overlay" id="cfgModal">
+  <div class="cfg-modal">
+    <div class="cfg-modal-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+    <h3>配置后端服务</h3>
+    <p>检测到您还未配置后端 API 地址。请先设置 Host 和 Path，才能正常使用对话功能。</p>
+    <div class="cfg-modal-acts">
+      <button class="btn-later" id="cfgLater">稍后设置</button>
+      <button class="btn-go" id="cfgGo">立即配置</button>
+    </div>
+  </div>
+</div>
 <div class="apop-overlay" id="apopOverlay"></div>
 <div class="apop" id="apop">
   <h4>API 设置</h4>
@@ -385,6 +455,16 @@ input,select,textarea{font-family:inherit;outline:none}
       <div class="stside"><div class="stsh"><h3>Content Types</h3></div><div class="stl" id="stl"></div><div class="stf"><button class="sfb" id="stExp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>导出</button><button class="sfb" id="stRst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>恢复默认</button><button class="sfb" id="stSav" style="color:var(--accent);font-weight:600"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>保存</button></div></div>
       <div class="sted" id="sted"><div class="ste0">← 选择一个 content_type 开始编辑</div></div>
       <div class="stpv"><div class="stph"><h3>实时预览</h3></div><div class="stpb"><div class="pml">渲染效果</div><div class="pmm"><div class="pma"></div><div class="pmc" id="stPv"></div></div></div></div>
+    </div>
+    <!-- DOCS -->
+    <div class="pg pg-docs" id="pgDocs" data-on="0">
+      <div class="doc-side">
+        <div class="doc-side-head"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>文档目录</h3><span class="doc-back" id="docBack">返回</span></div>
+        <div class="doc-tree" id="docTree"><div style="padding:20px;text-align:center;color:var(--t4);font-size:13px">加载中...</div></div>
+      </div>
+      <div class="doc-content md" id="docContent">
+        <div class="doc-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><span>选择左侧文档开始阅读</span></div>
+      </div>
     </div>
   </div>
 </div>
@@ -446,11 +526,16 @@ function setTheme(dark){isDark=dark;document.documentElement.setAttribute('data-
 setTheme(isDark);
 $('sbTheme').addEventListener('click',function(){setTheme(!isDark)});
 
-/* Page switch via sidebar footer */
+/* Page switch helper */
+function switchPage(pg){
+  document.querySelectorAll('.pg').forEach(function(p){p.setAttribute('data-on','0')});
+  $(pg).setAttribute('data-on','1');
+  $('sbRenderer').classList.toggle('on',pg==='pgStu');
+}
 $('sbRenderer').addEventListener('click',function(){
   var cur=$('pgStu').getAttribute('data-on')==='1';
-  if(cur){$('pgStu').setAttribute('data-on','0');$('pgChat').setAttribute('data-on','1');this.classList.remove('on')}
-  else{$('pgChat').setAttribute('data-on','0');$('pgStu').setAttribute('data-on','1');this.classList.add('on');bSL()}
+  if(cur){switchPage('pgChat')}
+  else{switchPage('pgStu');bSL()}
 });
 
 /* API popover */
@@ -666,6 +751,81 @@ $('stRst').addEventListener('click',function(){if(confirm('恢复默认？')){cf
 $('stExp').addEventListener('click',function(){var j='const RENDERER_CONFIG = '+JSON.stringify(cfg,null,2)+';';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([j],{type:'application/javascript'}));a.download='renderer_config.js';a.click();toast('已导出','ok')});
 
 setEmpty(!cC()||!(cC().messages||[]).length);
+
+/* Config prompt — show if host+path are both empty/default on first visit */
+(function(){
+  var host=cfgHost.value.trim(), path=cfgPath.value.trim();
+  var dismissed=false;
+  try{dismissed=localStorage.getItem('ac_cfg_dismissed')==='1'}catch(e){}
+  if(!host && !dismissed){
+    $('cfgModal').classList.add('open');
+  }
+  $('cfgLater').addEventListener('click',function(){
+    $('cfgModal').classList.remove('open');
+    try{localStorage.setItem('ac_cfg_dismissed','1')}catch(e){}
+  });
+  $('cfgGo').addEventListener('click',function(){
+    $('cfgModal').classList.remove('open');
+    try{localStorage.setItem('ac_cfg_dismissed','1')}catch(e){}
+    /* open API settings */
+    apop.classList.add('open');apopOverlay.classList.add('open');
+    cfgHost.focus();
+  });
+})();
+
+/* ======== DOCS PAGE ======== */
+var docTree=$('docTree'),docContent=$('docContent'),docCurrentFile=null;
+
+$('docsBtn').addEventListener('click',function(){
+  var cur=$('pgDocs').getAttribute('data-on')==='1';
+  if(cur){switchPage('pgChat')}
+  else{switchPage('pgDocs');loadDocsTree()}
+});
+$('docBack').addEventListener('click',function(){switchPage('pgChat')});
+
+function loadDocsTree(){
+  fetch('/_api/docs/tree').then(function(r){return r.json()}).then(function(tree){
+    docTree.innerHTML='';
+    if(!tree.length){docTree.innerHTML='<div style="padding:20px;text-align:center;color:var(--t4);font-size:13px">暂无文档</div>';return}
+    renderTree(tree,docTree);
+  }).catch(function(){docTree.innerHTML='<div style="padding:20px;text-align:center;color:var(--t4);font-size:13px">加载失败</div>'});
+}
+function renderTree(items,container){
+  items.forEach(function(item){
+    if(item.type==='dir'){
+      var dir=document.createElement('div');dir.className='dt-dir';
+      var label=document.createElement('div');label.className='dt-dir-label open';
+      label.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg><span>'+E(item.name)+'</span>';
+      var ch=document.createElement('div');ch.className='dt-children';ch.style.maxHeight='2000px';
+      label.addEventListener('click',function(){
+        var open=label.classList.toggle('open');
+        ch.classList.toggle('collapsed',!open);
+      });
+      dir.appendChild(label);dir.appendChild(ch);
+      if(item.children)renderTree(item.children,ch);
+      container.appendChild(dir);
+    }else{
+      var f=document.createElement('div');f.className='dt-file'+(docCurrentFile===item.path?' on':'');
+      f.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>'+E(item.name.replace(/\.md$/i,''))+'</span>';
+      f.addEventListener('click',function(){loadDocFile(item.path);docTree.querySelectorAll('.dt-file').forEach(function(x){x.classList.remove('on')});f.classList.add('on')});
+      container.appendChild(f);
+    }
+  });
+}
+function loadDocFile(path){
+  docCurrentFile=path;
+  docContent.innerHTML='<div style="padding:40px;text-align:center;color:var(--t4)">加载中...</div>';
+  fetch('/_api/docs/file?path='+encodeURIComponent(path)).then(function(r){return r.text()}).then(function(md){
+    docContent.innerHTML='<div class="doc-article"><div class="doc-article-path">'+E(path)+'</div><div class="md" id="docMd"></div></div>';
+    var el=$('docMd');
+    try{
+      el.innerHTML=marked.parse(md,{breaks:true,gfm:true});
+      el.querySelectorAll('pre code').forEach(function(b){hljs.highlightElement(b)});
+      aCB(el);
+    }catch(e){el.textContent=md}
+    docContent.scrollTop=0;
+  }).catch(function(){docContent.innerHTML='<div class="doc-empty"><span>加载失败</span></div>'});
+}
 
 /* Typewriter multilingual animation */
 var twPhrases=[
