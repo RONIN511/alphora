@@ -30,22 +30,22 @@ const STYLE_PRESETS = {
 const RENDERER_CONFIG = {
   _default:{label:"默认",component:"markdown",layout:"inline",preset:"默认正文",atoms:["text-base","font-sans","color-primary","bg-none","leading-relaxed"],style:{}},
   text:{label:"正文",component:"markdown",layout:"inline",preset:"默认正文",atoms:["text-base","font-sans","color-primary","bg-none","leading-relaxed"],style:{}},
-  thinking:{label:"思考",component:"text",layout:"inline",icon:"💭",collapsible:true,defaultCollapsed:false,preset:"思考链",atoms:["text-sm","font-sans","color-muted","bg-gray-50","border-l-gray","p-4","rounded-md","italic","leading-normal"],style:{}},
-  reasoning:{label:"推理",component:"text",layout:"inline",icon:"🧠",collapsible:true,defaultCollapsed:false,preset:"思考链",atoms:["text-sm","font-sans","color-muted","bg-gray-50","border-l-gray","p-4","rounded-md","italic","leading-normal"],style:{}},
+  thinking:{label:"思考",component:"text",layout:"inline",icon:"",collapsible:true,defaultCollapsed:false,preset:"思考链",atoms:["text-sm","font-sans","color-muted","bg-gray-50","border-l-gray","p-4","rounded-md","italic","leading-normal"],style:{}},
+  reasoning:{label:"推理",component:"text",layout:"inline",icon:"",collapsible:true,defaultCollapsed:false,preset:"思考链",atoms:["text-sm","font-sans","color-muted","bg-gray-50","border-l-gray","p-4","rounded-md","italic","leading-normal"],style:{}},
   code:{label:"代码",component:"code",layout:"inline",preset:"灰底代码",atoms:["text-sm","font-mono","color-primary","bg-gray-100","p-4","rounded-lg","leading-tight","border"],style:{}},
-  bash:{label:"命令",component:"terminal",layout:"panel",icon:"▶",preset:"暗色终端",atoms:["text-sm","font-mono","color-term-green","bg-gray-900","p-4","rounded-lg","leading-tight"],style:{}},
-  stdout:{label:"输出",component:"terminal",layout:"panel",icon:"→",preset:"终端输出",atoms:["text-sm","font-mono","color-term-gray","bg-gray-900","p-4","rounded-lg","leading-tight"],style:{}},
-  stderr:{label:"错误输出",component:"terminal",layout:"panel",icon:"✕",preset:"终端错误",atoms:["text-sm","font-mono","color-term-red","bg-gray-900","p-4","rounded-lg","leading-tight"],style:{}},
+  bash:{label:"命令",component:"terminal",layout:"panel",icon:"",preset:"暗色终端",atoms:["text-sm","font-mono","color-term-green","bg-gray-900","p-4","rounded-lg","leading-tight"],style:{}},
+  stdout:{label:"输出",component:"terminal",layout:"panel",icon:"",preset:"终端输出",atoms:["text-sm","font-mono","color-term-gray","bg-gray-900","p-4","rounded-lg","leading-tight"],style:{}},
+  stderr:{label:"错误输出",component:"terminal",layout:"panel",icon:"",preset:"终端错误",atoms:["text-sm","font-mono","color-term-red","bg-gray-900","p-4","rounded-lg","leading-tight"],style:{}},
   json:{label:"JSON",component:"json",layout:"inline",icon:"{ }",collapsible:true,preset:"灰底代码",atoms:["text-sm","font-mono","color-primary","bg-gray-100","p-4","rounded-lg","leading-tight","border"],style:{}},
   table:{label:"表格",component:"table",layout:"inline",atoms:["text-sm","font-sans","color-primary"],style:{}},
   html:{label:"HTML",component:"html",layout:"inline",maxHeight:"500px",atoms:[],style:{}},
   image:{label:"图片",component:"image",layout:"inline",atoms:["rounded-lg"],style:{maxWidth:"100%"}},
-  tool_call:{label:"工具调用",component:"code",layout:"inline",icon:"⚙",collapsible:true,defaultCollapsed:true,preset:"工具调用",atoms:["text-sm","font-mono","color-primary","bg-purple-50","border-l-purple","p-4","rounded-md","leading-tight"],style:{}},
-  tool_result:{label:"工具结果",component:"code",layout:"inline",icon:"✓",collapsible:true,defaultCollapsed:true,preset:"成功",atoms:["text-sm","font-mono","color-primary","bg-green-50","border-l-green","p-4","rounded-md","leading-tight"],style:{}},
-  status:{label:"状态",component:"text",layout:"inline",icon:"ℹ",preset:"淡蓝信息",atoms:["text-sm","font-sans","color-accent","bg-blue-50","border-l-blue","p-4","rounded-md","leading-normal"],style:{}},
-  error:{label:"错误",component:"text",layout:"inline",icon:"✕",preset:"错误",atoms:["text-sm","font-sans","color-danger","bg-red-50","border-l-red","p-4","rounded-md","leading-normal"],style:{}},
-  warning:{label:"警告",component:"text",layout:"inline",icon:"△",preset:"警告",atoms:["text-sm","font-sans","color-warning","bg-amber-50","border-l-amber","p-4","rounded-md","leading-normal"],style:{}},
-  file:{label:"文件",component:"text",layout:"inline",icon:"📎",atoms:["text-sm","font-sans","color-primary","bg-gray-50","p-3","rounded-md","border"],style:{}}
+  tool_call:{label:"工具调用",component:"code",layout:"inline",icon:"",collapsible:true,defaultCollapsed:true,preset:"工具调用",atoms:["text-sm","font-mono","color-primary","bg-purple-50","border-l-purple","p-4","rounded-md","leading-tight"],style:{}},
+  tool_result:{label:"工具结果",component:"code",layout:"inline",icon:"",collapsible:true,defaultCollapsed:true,preset:"成功",atoms:["text-sm","font-mono","color-primary","bg-green-50","border-l-green","p-4","rounded-md","leading-tight"],style:{}},
+  status:{label:"状态",component:"text",layout:"inline",icon:"",preset:"淡蓝信息",atoms:["text-sm","font-sans","color-accent","bg-blue-50","border-l-blue","p-4","rounded-md","leading-normal"],style:{}},
+  error:{label:"错误",component:"text",layout:"inline",icon:"",preset:"错误",atoms:["text-sm","font-sans","color-danger","bg-red-50","border-l-red","p-4","rounded-md","leading-normal"],style:{}},
+  warning:{label:"警告",component:"text",layout:"inline",icon:"",preset:"警告",atoms:["text-sm","font-sans","color-warning","bg-amber-50","border-l-amber","p-4","rounded-md","leading-normal"],style:{}},
+  file:{label:"文件",component:"text",layout:"inline",icon:"",atoms:["text-sm","font-sans","color-primary","bg-gray-50","p-3","rounded-md","border"],style:{}}
 };
 function resolveAtoms(n){var r={};if(!Array.isArray(n))return r;n.forEach(function(k){if(STYLE_ATOMS[k])Object.assign(r,STYLE_ATOMS[k])});return r}
 function resolveStyle(c){return Object.assign(resolveAtoms(c.atoms||[]),c.style||{})}
