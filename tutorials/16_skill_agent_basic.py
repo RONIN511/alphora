@@ -1,5 +1,5 @@
 """
-Tutorial 16: SkillAgent + SkillManager (discover/activate/resources/validate).
+Tutorial 16: SkillAgent + SkillManager + Skills 组件（工具化）。
 
 Run:
   python tutorials/16_skill_agent_basic.py
@@ -7,93 +7,68 @@ Run:
 
 import asyncio
 import os
-import tempfile
 from pathlib import Path
 
 from alphora.agent import SkillAgent
 from alphora.models import OpenAILike
-from alphora.skills import SkillManager
+from alphora.skills import SkillManager, create_skill_tools, create_filesystem_skill_tools
 
-
-def create_demo_skill(root: Path) -> Path:
-    skill_dir = root / "hello-skill"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    skill_md = skill_dir / "SKILL.md"
-    (skill_dir / "references").mkdir(parents=True, exist_ok=True)
-    (skill_dir / "references" / "REFERENCE.md").write_text(
-        "# Reference\nUse this to greet politely."
-    )
-
-    skill_md.write_text(
-        "---\n"
-        "name: hello-skill\n"
-        "description: Say hello and explain what you can do.\n"
-        "license: Apache-2.0\n"
-        "metadata:\n"
-        "  author: demo\n"
-        "  version: \"1.0\"\n"
-        "---\n\n"
-        "# Hello Skill\n"
-        "Use this skill when the user asks for a greeting.\n"
-    )
-    return skill_dir
+from alphora_community import
 
 
 async def main() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        create_demo_skill(root)
+    repo_root = Path(__file__).resolve().parents[1]
+    community_skills = repo_root / "alphora_community" / "skills"
+    skill_name = "deep-research"
 
-        manager = SkillManager([root])
-        manager.discover()
+    manager = SkillManager([community_skills])
+    manager.discover()
 
-        print("=== Discovered Skills ===")
-        print(manager.skill_names)
+    print("=== Discovered Skills ===")
+    print(manager.skill_names)
 
-        print("\n=== Prompt Injection Preview ===")
-        print(manager.to_prompt(format="xml"))
+    print("\n=== Prompt Injection Preview ===")
+    print(manager.to_prompt(format="xml"))
 
-        print("\n=== System Instruction Preview ===")
-        print(manager.to_system_instruction(format="xml"))
+    print("\n=== System Instruction Preview ===")
+    print(manager.to_system_instruction(format="xml"))
 
-        print("\n=== Validate Skills ===")
-        print(manager.validate("hello-skill") or "ok")
+    print("\n=== Validate Skill ===")
+    print(manager.validate(skill_name) or "ok")
 
-        print("\n=== Activate Skill (progressive disclosure) ===")
-        content = manager.activate("hello-skill")
-        print(content.instructions[:60] + "...")
+    print("\n=== Activate Skill (progressive disclosure) ===")
+    content = manager.activate(skill_name)
+    print(content.instructions.splitlines()[0])
 
-        print("\n=== Read Resource ===")
-        ref = manager.read_resource("hello-skill", "references/REFERENCE.md")
-        print(ref.content)
+    print("\n=== List Resources ===")
+    print(manager.list_resources(skill_name).to_display())
 
-        if not os.getenv("LLM_API_KEY") or not os.getenv("LLM_BASE_URL") or not os.getenv("DEFAULT_LLM"):
-            print("\nSkip SkillAgent run (missing env vars).")
-            return
+    print("\n=== Read Resource ===")
+    ref = manager.read_resource(skill_name, "references/QUESTION_FRAMEWORK.md")
+    print(ref.content.splitlines()[0])
 
-        agent = SkillAgent(
-            llm=OpenAILike(),
-            skill_paths=[root],
-            system_prompt="You can use skills if helpful.",
-            max_iterations=20,
-        )
+    print("\n=== Skills 组件：Tool 模式 ===")
+    skill_tools = create_skill_tools(manager)
+    print([tool.name for tool in skill_tools])
 
-        # Filesystem mode: return paths to LLM (useful with sandbox tools)
-        fs_agent = SkillAgent(
-            llm=OpenAILike(),
-            skill_paths=[root],
-            filesystem_mode=True,
-            system_prompt="You can read skills by path if needed.",
-            max_iterations=5,
-        )
+    print("\n=== Skills 组件：Filesystem 模式 ===")
+    fs_tools = create_filesystem_skill_tools(manager)
+    print([tool.name for tool in fs_tools])
 
-        result = await agent.run("Say hello and mention your main capabilities.")
-        print("\n=== SkillAgent Result ===")
-        print(result)
+    if not os.getenv("LLM_API_KEY") or not os.getenv("LLM_BASE_URL") or not os.getenv("DEFAULT_LLM"):
+        print("\nSkip SkillAgent run (missing env vars).")
+        return
 
-        fs_result = await fs_agent.run("Say hello using filesystem skills if needed.")
-        print("\n=== Filesystem Mode Result ===")
-        print(fs_result)
+    agent = SkillAgent(
+        llm=OpenAILike(),
+        skill_paths=[community_skills],
+        system_prompt="You can use skills if helpful.",
+        max_iterations=20,
+    )
+
+    result = await agent.run("研究一下NL2SQL领域最新进展")
+    print("\n=== SkillAgent Result ===")
+    print(result)
 
 
 if __name__ == "__main__":

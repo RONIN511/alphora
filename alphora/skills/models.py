@@ -8,7 +8,7 @@ Skills 数据模型
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator
@@ -69,7 +69,7 @@ class SkillProperties(BaseModel):
         max_length=COMPATIBILITY_MAX_LENGTH,
         description="Environment requirements"
     )
-    metadata: Optional[Dict[str, str]] = Field(
+    metadata: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Arbitrary key-value metadata"
     )
