@@ -9,70 +9,54 @@ Alphora API Mock 示例
     兼容路径: /alphadata/chat/completions
 """
 
-from __future__ import annotations
-
-import argparse
 import asyncio
-
 import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-
+from alphora.server.quick_api import publish_agent_api, APIPublisherConfig
+from alphora.models.llms import OpenAILike
 from alphora.server.openai_request_body import OpenAIRequest
-from alphora.server.stream_responser import DataStreamer
+from alphora.agent import BaseAgent
 
-APP_TITLE = "Alphora API Mock"
-MOCK_MODEL = "AlphaData-Mock"
 
-app = FastAPI(title=APP_TITLE)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+class MockAgent(BaseAgent):
+
+    async def start(self, request: OpenAIRequest):
+        query = request.get_user_query()
+
+        prompter = self.create_prompt(system_prompt="你是Alphora，一个由中国移动数智化部开发的AI智能体")
+
+        await prompter.acall(query=query,
+                             is_stream=True)
+
+        await self.stream.astop()
+
+        pass
+
+
+llm = OpenAILike(
+    max_tokens=8000
 )
 
 
-async def _emit_mock_stream(streamer: DataStreamer, request: OpenAIRequest) -> None:
-    """模拟流式输出，帮助前端实现实时渲染逻辑。"""
-    query = request.get_user_query().strip() or "你好"
-    await streamer.send_data("thinking", f"收到问题: {query}")
-    await asyncio.sleep(0.05)
-    await streamer.send_data("text", "这是一个 mock 响应，用于前端联调。")
-    await asyncio.sleep(0.05)
-    await streamer.send_data("code", "console.log('hello from mock');")
-    await streamer.stop("stop")
+agent = MockAgent(llm=llm)
 
 
-async def _build_non_stream_response(request: OpenAIRequest):
-    """生成非流式完整响应，格式与服务端一致。"""
-    streamer = DataStreamer(timeout=30, model_name=MOCK_MODEL)
-    query = request.get_user_query().strip() or "你好"
-    await streamer.send_data("thinking", f"收到问题: {query}")
-    await streamer.send_data("text", "这是一个 mock 响应，用于前端联调。")
-    await streamer.send_data("code", "console.log('hello from mock');")
-    await streamer.stop("stop")
-    return await streamer.start_non_streaming_openai()
+# API发布配置信息
+config = APIPublisherConfig(
+    path='/v1',
+)
 
-
-@app.post("/api/v1/chat/completions")
-@app.post("/alphadata/chat/completions")
-async def chat_completions(body: OpenAIRequest, raw_request: Request):
-    _ = raw_request  # 保留参数便于后续扩展
-    if body.stream:
-        streamer = DataStreamer(timeout=30, model_name=MOCK_MODEL)
-        asyncio.create_task(_emit_mock_stream(streamer, body))
-        return streamer.start_streaming_openai()
-    return await _build_non_stream_response(body)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Alphora API Mock")
-    parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8000)
-    args = parser.parse_args()
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+# 4. 发布 API
+app = publish_agent_api(
+    agent=agent,
+    method="start",
+    config=config
+)
 
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(
+        app,
+        host='127.0.0.1',
+        port=8000
+    )
+

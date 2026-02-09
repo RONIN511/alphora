@@ -3,6 +3,7 @@ import datetime
 from typing import Type, Dict, Any, Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from alphora.agent.base_agent import BaseAgent
 
@@ -53,6 +54,15 @@ def publish_agent_api(
             method_name=method
         ) if "{agent_name}" in config.api_description or "{method_name}" in config.api_description
         else config.api_description
+    )
+
+    # CORS中间件 - 允许前端跨域访问
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # 初始化核心组件
