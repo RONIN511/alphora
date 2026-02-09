@@ -12,8 +12,7 @@ from pathlib import Path
 from alphora.agent import SkillAgent
 from alphora.models import OpenAILike
 from alphora.skills import SkillManager, create_skill_tools, create_filesystem_skill_tools
-
-from alphora_community import
+from alphora_community.tools import ArxivSearchTool
 
 
 async def main() -> None:
@@ -61,6 +60,7 @@ async def main() -> None:
 
     agent = SkillAgent(
         llm=OpenAILike(),
+        tools=[ArxivSearchTool.search],
         skill_paths=[community_skills],
         system_prompt="You can use skills if helpful.",
         max_iterations=20,

@@ -119,7 +119,9 @@ input,select,textarea{font-family:inherit;outline:none}
 .wl-logo img{width:100%;height:100%;object-fit:contain}
 .wl-hero-text{display:flex;flex-direction:column;gap:2px}
 .wl-greeting-text{font-size:28px;font-weight:600;color:var(--t2);line-height:1.2}
-.wl-headline{font-size:32px;font-weight:700;letter-spacing:-.5px;line-height:1.25;background:linear-gradient(90deg,var(--accent) 0%,#a855f7 50%,#ec4899 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.wl-headline{font-size:32px;font-weight:700;letter-spacing:-.5px;line-height:1.25;background:linear-gradient(90deg,var(--accent) 0%,#a855f7 50%,#ec4899 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;min-height:1.25em}
+.wl-cursor{display:inline-block;width:2px;height:.9em;background:var(--accent);margin-left:2px;vertical-align:text-bottom;animation:cur-blink .6s steps(2) infinite}
+@keyframes cur-blink{0%{opacity:1}100%{opacity:0}}
 .wl-foot{display:none;color:var(--t4);font-size:12px;line-height:1.7;text-align:center;max-width:780px;margin:0 auto;width:100%;padding:0 28px}
 
 /* Messages */
@@ -347,7 +349,7 @@ input,select,textarea{font-family:inherit;outline:none}
           <div class="wl-logo"><img src="/asset/image/logo.png" alt="alphora"></div>
           <div class="wl-hero-text">
             <div class="wl-greeting-text">alphora chat</div>
-            <div class="wl-headline">需要我为你做些什么？</div>
+            <div class="wl-headline" id="wlHL"><span class="wl-cursor"></span></div>
           </div>
         </div>
       </div></div>
@@ -619,6 +621,43 @@ $('stRst').addEventListener('click',function(){if(confirm('恢复默认？')){cf
 $('stExp').addEventListener('click',function(){var j='const RENDERER_CONFIG = '+JSON.stringify(cfg,null,2)+';';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([j],{type:'application/javascript'}));a.download='renderer_config.js';a.click();toast('已导出','ok')});
 
 setEmpty(!cC()||!(cC().messages||[]).length);
+
+/* Typewriter multilingual animation */
+var twPhrases=[
+  '需要我为你做些什么？',
+  'What can I do for you?',
+  '何かお手伝いできますか？',
+  'Was kann ich für Sie tun?',
+  '무엇을 도와드릴까요?',
+  'Que puis-je faire pour vous ?',
+  'Чем могу помочь?',
+  'ما الذي يمكنني مساعدتك به؟'
+];
+var twEl=$('wlHL'),twIdx=0,twCharIdx=0,twDir=1,twTimer=null,twPause=0;
+function twTick(){
+  if(!twEl)return;
+  var phrase=twPhrases[twIdx];
+  var cur=twEl.querySelector('.wl-cursor');
+  if(twDir===1){
+    twCharIdx++;
+    twEl.textContent=phrase.slice(0,twCharIdx);
+    if(cur)twEl.appendChild(cur);else{var c=document.createElement('span');c.className='wl-cursor';twEl.appendChild(c)}
+    if(twCharIdx>=phrase.length){twDir=0;twPause=30;/* pause ~2.4s at 80ms */}
+    twTimer=setTimeout(twTick,40+Math.random()*40);
+  }else if(twDir===0){
+    twPause--;
+    if(twPause<=0){twDir=-1}
+    twTimer=setTimeout(twTick,80);
+  }else{
+    twCharIdx--;
+    twEl.textContent=phrase.slice(0,twCharIdx);
+    if(cur)twEl.appendChild(cur);else{var c=document.createElement('span');c.className='wl-cursor';twEl.appendChild(c)}
+    if(twCharIdx<=0){twDir=1;twIdx=(twIdx+1)%twPhrases.length;twTimer=setTimeout(twTick,500);return}
+    twTimer=setTimeout(twTick,25);
+  }
+}
+twTick();
+
 uIn.focus();bSL();
 })();
 </script>
