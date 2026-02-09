@@ -30,16 +30,16 @@
 }
 /* === DARK MODE === */
 [data-theme="dark"] {
-  --white:#0f172a;--bg:#1e293b;--bg2:#334155;--bg3:#475569;
-  --border:#334155;--blt:#1e293b;
-  --t1:#f1f5f9;--t2:#e2e8f0;--t3:#94a3b8;--t4:#64748b;--t5:#475569;
-  --accent:#818cf8;--accent-h:#6366f1;--abg:rgba(99,102,241,.15);
+  --white:#1a1a1a;--bg:#242424;--bg2:#2e2e2e;--bg3:#3a3a3a;
+  --border:#2e2e2e;--blt:#202020;
+  --t1:#ffffff;--t2:#e0e0e0;--t3:#8c8c8c;--t4:#606060;--t5:#404040;
+  --accent:#818cf8;--accent-h:#6366f1;--abg:rgba(99,102,241,.12);
   --green:#34d399;--red:#f87171;--amber:#fbbf24;
-  --shadow-xs:0 1px 2px rgba(0,0,0,.15);
-  --shadow-sm:0 1px 3px rgba(0,0,0,.2),0 1px 2px rgba(0,0,0,.15);
-  --shadow-md:0 4px 6px -1px rgba(0,0,0,.25),0 2px 4px -2px rgba(0,0,0,.2);
-  --shadow-lg:0 10px 15px -3px rgba(0,0,0,.3),0 4px 6px -4px rgba(0,0,0,.2);
-  --bg-grad:linear-gradient(135deg,#0f172a 0%,#111827 100%)
+  --shadow-xs:0 1px 2px rgba(0,0,0,.25);
+  --shadow-sm:0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.25);
+  --shadow-md:0 4px 6px -1px rgba(0,0,0,.4),0 2px 4px -2px rgba(0,0,0,.3);
+  --shadow-lg:0 10px 15px -3px rgba(0,0,0,.5),0 4px 6px -4px rgba(0,0,0,.35);
+  --bg-grad:linear-gradient(135deg,#1a1a1a 0%,#1e1e1e 100%)
 }
 /* ===== RESETS ===== */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -51,7 +51,7 @@ input,select,textarea{font-family:inherit;outline:none}
 /* ===== APP SHELL ===== */
 #app{width:100%;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 #nav{height:var(--nav-h);flex:0 0 var(--nav-h);display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(255,255,255,.72);backdrop-filter:blur(16px) saturate(180%);-webkit-backdrop-filter:blur(16px) saturate(180%);border-bottom:1px solid var(--border);z-index:100;transition:background .3s}
-[data-theme="dark"] #nav{background:rgba(15,23,42,.8)}
+[data-theme="dark"] #nav{background:rgba(32,32,32,.85)}
 .nl{display:flex;align-items:center;gap:6px}
 .brand{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:700;color:var(--t1);letter-spacing:-.3px;padding-right:16px;margin-right:8px;border-right:1px solid var(--border);user-select:none}
 .brand i{width:28px;height:28px;border-radius:8px;background:transparent;display:flex;align-items:center;justify-content:center;box-shadow:none;overflow:hidden}
@@ -77,22 +77,35 @@ input,select,textarea{font-family:inherit;outline:none}
 .pg-chat{display:flex;flex-direction:row}
 
 /* Sidebar */
-.hsb{width:260px;flex:0 0 260px;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:background .3s}
-.hsh{padding:16px 16px 12px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
-.hsh h3{font-size:11px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.8px}
+.hsb{width:260px;flex:0 0 260px;background:rgba(248,250,252,.55);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border-right:1px solid rgba(226,232,240,.5);display:flex;flex-direction:column;transition:width .35s cubic-bezier(.22,1,.36,1),flex .35s cubic-bezier(.22,1,.36,1),opacity .25s ease,background .3s}
+[data-theme="dark"] .hsb{background:rgba(32,32,32,.55);border-right-color:rgba(46,46,46,.6)}
+.hsb.collapsed{width:0;flex:0 0 0;opacity:0;overflow:hidden;border-right:none}
+.sb-toggle{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;color:var(--t4);transition:all .2s ease;position:relative}
+.sb-toggle:hover{background:var(--bg2);color:var(--t2)}
+.sb-toggle svg{width:16px;height:16px}
+.hsh{padding:16px 16px 8px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
+.hsh h3{font-size:12px;font-weight:600;color:var(--t3)}
+.hsh-acts{display:flex;align-items:center;gap:2px}
 .sb{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;color:var(--t3);transition:all .2s ease}
-.sb:hover{background:var(--bg3);color:var(--accent)}
+.sb:hover{background:rgba(0,0,0,.06);color:var(--accent)}
+[data-theme="dark"] .sb:hover{background:rgba(255,255,255,.08)}
 .sb svg{width:15px;height:15px}
-.hsl{flex:1 1 0%;overflow-y:auto;padding:0 10px 10px}
-.hsl::-webkit-scrollbar{width:4px}
-.hsl::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-.hi{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;font-size:13px;color:var(--t2);cursor:pointer;transition:all .15s ease;margin-bottom:2px}
-.hi:hover{background:var(--bg2);color:var(--t1)}
-.hi.on{background:var(--white);color:var(--t1);box-shadow:var(--shadow-sm);font-weight:500}
+.hsl{flex:1 1 0%;overflow-y:auto;padding:6px 8px 10px}
+.hsl::-webkit-scrollbar{width:3px}
+.hsl::-webkit-scrollbar-thumb{background:rgba(0,0,0,.08);border-radius:4px}
+[data-theme="dark"] .hsl::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08)}
+.hi{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;font-size:13.5px;color:var(--t3);cursor:pointer;transition:all .2s ease;margin-bottom:2px}
+.hi:hover{background:rgba(0,0,0,.04);color:var(--t1)}
+[data-theme="dark"] .hi:hover{background:rgba(255,255,255,.06)}
+.hi.on{background:var(--accent);color:#fff;font-weight:500;box-shadow:0 2px 8px rgba(99,102,241,.25)}
+[data-theme="dark"] .hi.on{background:var(--accent);color:#fff}
 .hit{flex:1 1 0%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hid{display:none;flex:0 0 22px;height:22px;align-items:center;justify-content:center;border-radius:6px;color:var(--t4);font-size:12px;transition:all .15s}
 .hi:hover .hid{display:flex}
-.hid:hover{color:var(--red);background:rgba(239,68,68,.08)}
+.hi.on .hid{color:rgba(255,255,255,.6)}
+.hi.on:hover .hid{display:flex}
+.hid:hover{color:var(--red);background:rgba(239,68,68,.12)}
+.hi.on .hid:hover{color:#fff;background:rgba(255,255,255,.2)}
 
 /* Chat main */
 .cmain{flex:1 1 0%;display:flex;flex-direction:column;min-width:0;overflow:hidden;background:var(--white);transition:background .3s}
@@ -125,17 +138,16 @@ input,select,textarea{font-family:inherit;outline:none}
 .wl-foot{display:none;color:var(--t4);font-size:12px;line-height:1.7;text-align:center;max-width:780px;margin:0 auto;width:100%;padding:0 28px}
 
 /* Messages */
-.msg{padding:24px 0;position:relative;animation:mi .35s cubic-bezier(.21,1.02,.73,1)}
+.msg{padding:16px 0;position:relative;animation:mi .35s cubic-bezier(.21,1.02,.73,1)}
 .msg+.msg{border-top:none}
 @keyframes mi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.mi{max-width:800px;margin:0 auto;padding:0 32px;display:flex;gap:16px}
+.mi{max-width:800px;margin:0 auto;padding:0 32px;display:flex;gap:0}
 .msg.user .mi{justify-content:flex-end}
-.msg.user .mb{background:var(--bg);padding:12px 18px;border-radius:20px 20px 4px 20px;max-width:72%;word-break:break-word;font-size:14px;line-height:1.65}
+.msg.user .mb{color:var(--t1);padding:10px 16px;max-width:33%;word-break:break-word;font-size:14px;line-height:1.7;background:var(--bg);border-radius:18px 18px 4px 18px;width:fit-content;margin-left:auto;flex:0 1 auto}
 .msg.assistant .mi{align-items:flex-start}
-.mav{width:30px;height:30px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#a855f7);display:flex;align-items:center;justify-content:center;flex:0 0 30px;margin-top:1px;box-shadow:0 2px 6px rgba(99,102,241,.2)}
-.mav svg{width:15px;height:15px}
+.mav{display:none}
 .mb{flex:1 1 0%;min-width:0}
-.mt{font-size:11px;color:var(--t5);max-width:800px;margin:6px auto 0;padding:0 32px 0 78px}
+.mt{font-size:11px;color:var(--t5);max-width:800px;margin:4px auto 0;padding:0 32px}
 .mfs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .mfc{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--t2)}
 
@@ -160,7 +172,7 @@ input,select,textarea{font-family:inherit;outline:none}
 /* Code copy */
 .cw{position:relative}
 .cc{position:absolute;top:10px;right:10px;padding:4px 10px;background:rgba(255,255,255,.9);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:500;color:var(--t3);opacity:0;transition:all .2s ease;backdrop-filter:blur(4px);z-index:2;cursor:pointer}
-[data-theme="dark"] .cc{background:rgba(30,41,59,.9)}
+[data-theme="dark"] .cc{background:rgba(36,36,36,.9)}
 .cw:hover .cc{opacity:1}
 .cc:hover{color:var(--accent);border-color:var(--accent)}
 .cc.ok{color:var(--green);border-color:var(--green)}
@@ -300,7 +312,7 @@ input,select,textarea{font-family:inherit;outline:none}
 
 /* Responsive */
 @media(max-width:900px){
-  .hsb{display:none}.tp{width:100vw}
+  .hsb{display:none!important}.tp{width:100vw}.sb-toggle{display:none!important}
   .mi{padding:0 16px}.ina{padding:8px 12px 14px}
   .macts{display:none!important}
   .stpv{display:none}.stside{width:170px;flex:0 0 170px}
@@ -320,6 +332,7 @@ input,select,textarea{font-family:inherit;outline:none}
 <div id="app">
 <div id="nav">
   <div class="nl">
+    <button class="sb-toggle" id="bExpand" title="展开侧栏" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
     <div class="brand"><i><img src="/asset/image/logo.png" alt="alphora logo"></i>alphora chat</div>
     <button class="ntab on" data-pg="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>对话</button>
     <button class="ntab" data-pg="stu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>渲染器</button>
@@ -342,7 +355,7 @@ input,select,textarea{font-family:inherit;outline:none}
 <div id="body">
   <!-- CHAT -->
   <div class="pg pg-chat" id="pgChat" data-on="1">
-    <div class="hsb"><div class="hsh"><h3>历史对话</h3><button class="sb" id="bNew" title="新对话"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button></div><div class="hsl" id="hsl"></div></div>
+    <div class="hsb" id="hsb"><div class="hsh"><h3>历史对话</h3><div class="hsh-acts"><button class="sb" id="bNew" title="新对话"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button><button class="sb" id="bCollapse" title="收起侧栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg></button></div></div><div class="hsl" id="hsl"></div></div>
     <div class="cmain">
       <div class="msgs" id="msgs"><div class="wl" id="wl">
         <div class="wl-hero">
@@ -437,6 +450,18 @@ document.querySelectorAll('.ntab[data-pg]').forEach(function(tab){
 /* API popover */
 $('bApi').addEventListener('click',function(e){e.stopPropagation();apop.classList.toggle('open');$('bApi').classList.toggle('on')});
 document.addEventListener('click',function(e){if(!apop.contains(e.target)){apop.classList.remove('open');$('bApi').classList.remove('on')}});
+
+/* Sidebar collapse/expand */
+var hsb=$('hsb'),bExpand=$('bExpand'),sbCollapsed=false;
+try{sbCollapsed=localStorage.getItem('ac_sb_col')==='1'}catch(e){}
+function setSB(col){
+  sbCollapsed=col;hsb.classList.toggle('collapsed',col);
+  bExpand.style.display=col?'flex':'none';
+  try{localStorage.setItem('ac_sb_col',col?'1':'0')}catch(e){}
+}
+setSB(sbCollapsed);
+$('bCollapse').addEventListener('click',function(){setSB(true)});
+bExpand.addEventListener('click',function(){setSB(false)});
 
 /* Terminal */
 function tgl(f){pOpen=f!==undefined?f:!pOpen;tp.classList.toggle('open',pOpen);$('bTrm').classList.toggle('on',pOpen)}
