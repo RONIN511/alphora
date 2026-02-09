@@ -135,7 +135,7 @@ class DockerConfig:
     """
     # image: str = "python:3.11-slim"
     image: str = "alphora-sandbox:latest"
-    network_mode: str = "none"  # none, bridge, host
+    network_mode: str = "bridge"  # none, bridge, host
     auto_remove: bool = True
     privileged: bool = False
     user: Optional[str] = "1000:1000"
@@ -281,7 +281,7 @@ class SandboxConfig:
         image: str = "python:3.11-slim",
         resource_limits: Optional[ResourceLimits] = None,
         security_policy: Optional[SecurityPolicy] = None,
-        network_enabled: bool = False,
+        network_enabled: bool = True,
         **kwargs
     ) -> "SandboxConfig":
         """

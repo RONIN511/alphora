@@ -136,7 +136,6 @@ class SkillAgent(BaseAgent):
         super().__init__(llm=llm, memory=memory, hooks=hook_manager, **kwargs)
 
         # Skill Manager
-
         if skill_manager is not None:
             self._skill_manager = skill_manager
         elif skill_paths:
@@ -172,7 +171,7 @@ class SkillAgent(BaseAgent):
         if sandbox is not None:
             self._setup_sandbox_tools(sandbox)
 
-        self._executor = ToolExecutor(self._registry)
+        self._executor = ToolExecutor(self._registry, hooks=hook_manager)
 
         # Prompt
         full_system_prompt = self._build_system_prompt(system_prompt)

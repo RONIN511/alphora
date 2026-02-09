@@ -36,64 +36,20 @@ metadata:
    - 参考 `references/QUESTION_FRAMEWORK.md`
    - 产出研究问题清单与假设
 
-2. **网络检索与资料抓取（社区工具）**
-   - 使用 `WebSearchTool.search` 做互联网检索（新闻/政策/行业数据）
-   - 使用 `ArxivSearchTool.search` 做学术检索（论文与摘要）
-   - 使用 `WebBrowser.fetch` 抓取网页/PDF 正文
-   - 使用 `FileViewer.view_file` 阅读本地报告/Excel/PDF
+2. **网络检索与资料抓取(提供的工具)**
+   - 使用 `arxiv_search` 做学术检索（论文与摘要）
+   - 使用 `fetch_url` 抓取网页/PDF 正文
+   - 使用 `view_file` 阅读本地报告/Excel/PDF
 
-3. **资料收集**
-   - 运行 `scripts/collect_sources.py`
-   - 输入：JSONL 资料清单
-   - 输出：`sources.json`
+（请不要钻牛角尖，不要反复的调用同一个工具）
 
-4. **去重与分组**
-   - 运行 `scripts/dedupe_sources.py`
-   - 输出：`sources_deduped.json`
+3. **随时记录有价值的内容**
+   - 使用 shell 工具，
 
-5. **结构化大纲**
-   - 运行 `scripts/synthesize_outline.py`
-   - 输出：`outline.json`
 
 6. **生成报告**
    - 运行 `scripts/generate_report.py` + `assets/report_template.md`
    - 输出：Markdown 报告
-
-## 示例命令
-
-```bash
-python scripts/collect_sources.py --input assets/sample_sources.jsonl --output sources.json
-python scripts/dedupe_sources.py --input sources.json --output sources_deduped.json
-python scripts/synthesize_outline.py --input sources_deduped.json --output outline.json
-python scripts/generate_report.py \
-  --outline outline.json \
-  --sources sources_deduped.json \
-  --template assets/report_template.md \
-  --output research_report.md
-```
-
-## 工具调用示例
-
-```python
-from alphora_community.tools import WebSearchTool, ArxivSearchTool, WebBrowser, FileViewer
-
-search = WebSearchTool()
-arxiv = ArxivSearchTool()
-browser = WebBrowser()
-viewer = FileViewer()
-
-# 互联网检索
-result = await search.search("AI 产业 2024 市场规模", freshness="oneYear")
-
-# 学术检索
-papers = await arxiv.search("large language model agents", max_results=8)
-
-# 抓取网页/PDF
-page = await browser.fetch("https://example.com/report.pdf", max_pdf_pages=10)
-
-# 读取本地文件
-local = await viewer.view_file("reports/industry_report.pdf")
-```
 
 ## 参考资料
 

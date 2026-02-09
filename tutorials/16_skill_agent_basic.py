@@ -12,7 +12,15 @@ from pathlib import Path
 from alphora.agent import SkillAgent
 from alphora.models import OpenAILike
 from alphora.skills import SkillManager, create_skill_tools, create_filesystem_skill_tools
+
+from alphora.sandbox import Sandbox
+
 from alphora_community.tools import ArxivSearchTool
+from alphora_community.tools import WebBrowser
+from alphora_community.tools import FileViewer
+
+from alphora.hooks import HookEvent
+from alphora.hooks.builtins import log_tool_execution
 
 
 async def main() -> None:
@@ -58,9 +66,23 @@ async def main() -> None:
         print("\nSkip SkillAgent run (missing env vars).")
         return
 
+    sandbox = Sandbox.create_docker()
+
+    await sandbox.start()
+
+    arxiv_search = ArxivSearchTool()
+    web_browser = WebBrowser()
+    file_viewer = FileViewer(sandbox=sandbox)
+
     agent = SkillAgent(
         llm=OpenAILike(),
-        tools=[ArxivSearchTool.search],
+        tools=[arxiv_search.arxiv_search,
+               web_browser.fetch_url,
+               file_viewer.view_file],
+        hooks={
+            HookEvent.TOOLS_AFTER_EXECUTE: log_tool_execution(include_args=True, include_result=True),
+        },
+        sandbox=sandbox,
         skill_paths=[community_skills],
         system_prompt="You can use skills if helpful.",
         max_iterations=20,

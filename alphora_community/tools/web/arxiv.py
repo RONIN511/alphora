@@ -22,7 +22,7 @@ class ArxivSearchTool:
         """初始化 arXiv 搜索工具（无需 API Key）"""
         pass
 
-    async def search(
+    async def arxiv_search(
             self,
             query: str,
             max_results: int = 5,
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     arxiv_tool = ArxivSearchTool()
 
     async def main():
-        result = await arxiv_tool.search(query='LLM')
+        result = await arxiv_tool.arxiv_search(query='LLM')
         print(result)
         pass
 

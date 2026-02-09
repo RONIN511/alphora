@@ -107,7 +107,7 @@ class ResourceLimits:
     max_processes: int = 10
     max_threads: int = 50
     max_open_files: int = 1024
-    network_enabled: bool = False
+    network_enabled: bool = True
     max_output_size: int = 10 * 1024 * 1024
     max_file_size: int = 100 * 1024 * 1024
     
@@ -150,7 +150,7 @@ class ResourceLimits:
 class SecurityPolicy:
     """Security policy configuration"""
     allow_shell: bool = True
-    allow_network: bool = False
+    allow_network: bool = True
     allow_file_write: bool = True
     allow_subprocess: bool = False
     blocked_imports: List[str] = field(default_factory=lambda: [

@@ -471,7 +471,7 @@ class WebBrowser:
         self.pdf_parser = PDFParser()
         self._playwright_available = None
 
-    async def fetch(
+    async def fetch_url(
             self,
             url: str,
             max_length: int = 100000,

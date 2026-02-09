@@ -1,4 +1,3 @@
-#!/usr/bin/env markdown
 # 深度研究问题框架
 
 ## 1. 定义问题

@@ -114,6 +114,7 @@ class Sandbox:
             security_policy: Optional[SecurityPolicy] = None,
             auto_cleanup: bool = False,
             storage: Optional[StorageBackend] = None,
+            network_enabled: Optional[bool] = None,
             hooks: Optional[Union[HookManager, Dict[Any, Any]]] = None,
             before_start: Optional[Callable] = None,
             after_start: Optional[Callable] = None,
@@ -139,6 +140,8 @@ class Sandbox:
             auto_cleanup: Cleanup workspace on stop
             storage: Storage backend for persistent workspace. When provided,
                      workspace will be at storage_path/<sandbox_id>/
+            network_enabled: Enable/disable network access. When provided,
+                     overrides the value in resource_limits and security_policy.
             **kwargs: Additional backend-specific options
         """
         # Handle backend type
@@ -151,6 +154,11 @@ class Sandbox:
         self._docker_image = docker_image
         self._resource_limits = resource_limits or ResourceLimits()
         self._security_policy = security_policy or SecurityPolicy()
+
+        # Apply network_enabled override if explicitly provided
+        if network_enabled is not None:
+            self._resource_limits.network_enabled = network_enabled
+            self._security_policy.allow_network = network_enabled
         self._auto_cleanup = auto_cleanup
         self._extra_kwargs = kwargs
 
@@ -206,6 +214,7 @@ class Sandbox:
             resource_limits: Optional[ResourceLimits] = None,
             security_policy: Optional[SecurityPolicy] = None,
             storage: Optional["StorageBackend"] = None,
+            network_enabled: Optional[bool] = None,
             **kwargs
     ) -> T:
         """
@@ -216,6 +225,7 @@ class Sandbox:
             resource_limits: Resource limits
             security_policy: Security policy
             storage: Optional storage backend for persistent workspace
+            network_enabled: Enable/disable network access (overrides resource_limits)
             **kwargs: Additional options
 
         Returns:
@@ -239,6 +249,7 @@ class Sandbox:
             resource_limits=resource_limits,
             security_policy=security_policy,
             storage=storage,
+            network_enabled=network_enabled,
             **kwargs
         )
 
@@ -250,6 +261,7 @@ class Sandbox:
             resource_limits: Optional[ResourceLimits] = None,
             security_policy: Optional[SecurityPolicy] = None,
             storage: Optional["StorageBackend"] = None,
+            network_enabled: Optional[bool] = None,
             **kwargs
     ) -> T:
         """
@@ -261,6 +273,7 @@ class Sandbox:
             resource_limits: Resource limits
             security_policy: Security policy
             storage: Optional storage backend for persistent workspace
+            network_enabled: Enable/disable network access (overrides resource_limits)
             **kwargs: Additional options
 
         Returns:
@@ -273,17 +286,19 @@ class Sandbox:
             resource_limits=resource_limits,
             security_policy=security_policy,
             storage=storage,
+            network_enabled=network_enabled,
             **kwargs
         )
 
     @classmethod
-    def from_config(cls: Type[T], config: SandboxConfig, storage: Optional["StorageBackend"] = None, **kwargs) -> T:
+    def from_config(cls: Type[T], config: SandboxConfig, storage: Optional["StorageBackend"] = None, network_enabled: Optional[bool] = None, **kwargs) -> T:
         """
         Create sandbox from configuration.
 
         Args:
             config: Sandbox configuration
             storage: Optional storage backend (overrides config.storage)
+            network_enabled: Enable/disable network access (overrides config)
             **kwargs: Override options
 
         Returns:
@@ -297,6 +312,7 @@ class Sandbox:
             security_policy=config.security_policy,
             auto_cleanup=config.auto_cleanup,
             storage=storage,
+            network_enabled=network_enabled,
             **kwargs
         )
 
@@ -305,6 +321,7 @@ class Sandbox:
     async def create(
             cls: Type[T],
             backend_type: Union[str, BackendType] = BackendType.LOCAL,
+            network_enabled: Optional[bool] = None,
             **kwargs
     ):
         """
@@ -312,12 +329,13 @@ class Sandbox:
 
         Args:
             backend_type: Backend type
+            network_enabled: Enable/disable network access
             **kwargs: Sandbox options
 
         Yields:
             Sandbox: Running sandbox instance
         """
-        sandbox = cls(backend_type=backend_type, **kwargs)
+        sandbox = cls(backend_type=backend_type, network_enabled=network_enabled, **kwargs)
         try:
             await sandbox.start()
             yield sandbox
@@ -330,6 +348,7 @@ class Sandbox:
             cls: Type[T],
             storage: "StorageBackend",
             backend_type: Union[str, BackendType] = BackendType.LOCAL,
+            network_enabled: Optional[bool] = None,
             **kwargs
     ):
         """
@@ -340,6 +359,7 @@ class Sandbox:
         Args:
             storage: Storage backend (must be initialized)
             backend_type: Backend type
+            network_enabled: Enable/disable network access
             **kwargs: Sandbox options
 
         Yields:
@@ -355,7 +375,7 @@ class Sandbox:
                     await sandbox.write_file("data.txt", "persistent!")
             ```
         """
-        sandbox = cls(backend_type=backend_type, storage=storage, **kwargs)
+        sandbox = cls(backend_type=backend_type, storage=storage, network_enabled=network_enabled, **kwargs)
         try:
             await sandbox.start()
             yield sandbox

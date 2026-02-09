@@ -120,7 +120,7 @@ class ReActAgent(BaseAgent):
         if sandbox is not None:
             self._setup_sandbox_tools(sandbox)
 
-        self._executor = ToolExecutor(self._registry)
+        self._executor = ToolExecutor(self._registry, hooks=hook_manager)
 
         # 默认系统提示
         if system_prompt == "":

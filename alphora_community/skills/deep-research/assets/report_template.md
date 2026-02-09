@@ -1,4 +1,3 @@
-#!/usr/bin/env markdown
 # 深度研究报告
 
 生成时间: {{generated_at}}
